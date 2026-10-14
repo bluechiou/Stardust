@@ -4,7 +4,7 @@
 
 /* 版本號：每次要讓使用者看到新東西時，這裡和 sw.js 的 CACHE 一起往上加。
    設定分頁會顯示這個號碼，回報問題時報這個數字最快能判斷對方在哪一版。 */
-const APP_VERSION = "2026.08.11";
+const APP_VERSION = "2026.10.14";
 
 /* ---------- 小工具 ---------- */
 const $ = (sel, el = document) => el.querySelector(sel);
@@ -3186,6 +3186,19 @@ function openReport(days, label) {
 
 /* ================= 月相＋天象 ================= */
 let calCursor = new Date();
+/* 新月／滿月「真正發生的那一天」（當地日期，00:00 的 Date）。
+   月曆高亮與開 App 的許願提示共用這一份，兩邊才不會各算各的。 */
+function phaseStartDays(ref) {
+  const out = { newmoon: [], fullmoon: [] };
+  const k0 = kNear(ref) - 1;
+  for (let k = k0; k <= k0 + 3; k++) {
+    for (const [phase, type] of [[0, "newmoon"], [0.5, "fullmoon"]]) {
+      const d = phaseDate(k, phase);
+      out[type].push(new Date(d.getFullYear(), d.getMonth(), d.getDate()));
+    }
+  }
+  return out;
+}
 function renderMoon() {
   const el = $("#view-moon");
   const y = calCursor.getFullYear(), mo = calCursor.getMonth();
@@ -3199,10 +3212,11 @@ function renderMoon() {
   /* 新月／滿月用外框高亮：從「真正發生的那一天」起算 3 天（含當天，不往回追溯）。
      以真實朔望時刻反推日期，否則朔望落在當天下午時，高亮會整組晚一天。 */
   const phaseWindow = { newmoon: new Set(), fullmoon: new Set() };
-  const k0 = kNear(first) - 1;
-  for (let k = k0; k <= k0 + 3; k++) {
-    for (const [phase, type] of [[0, "newmoon"], [0.5, "fullmoon"]]) {
-      const d0 = phaseDate(k, phase);
+  const phaseDay0 = { newmoon: new Set(), fullmoon: new Set() };   // 「發生那一天」本身；滿月這天的外框會動
+  const starts = phaseStartDays(first);
+  for (const type of ["newmoon", "fullmoon"]) {
+    for (const d0 of starts[type]) {
+      phaseDay0[type].add(dstr(d0));
       for (let i = 0; i < 3; i++) phaseWindow[type].add(dstr(new Date(d0.getFullYear(), d0.getMonth(), d0.getDate() + i)));
     }
   }
@@ -3212,6 +3226,8 @@ function renderMoon() {
     const dt = new Date(y, mo, day);
     const ds = dstr(dt);
     const mi = moonInfo(new Date(y, mo, day, 12));
+    // 今天用「此刻」的照度，才會跟標題列那顆月亮同一個數字；其他天取當天中午
+    const pct = Math.round(moonLive(ds === todayStr() ? new Date() : new Date(y, mo, day, 12)).k * 100);
     const dots = [
       entryDates.dream.has(ds) ? `<i class="dot-dream"></i>` : "",
       entryDates.diary.has(ds) ? `<i class="dot-diary"></i>` : "",
@@ -3219,8 +3235,11 @@ function renderMoon() {
     ].join("");
     const phaseClass = phaseWindow.newmoon.has(ds) ? "newmoon" : phaseWindow.fullmoon.has(ds) ? "fullmoon" : "";
     const isToday = ds === todayStr();
-    cells += `<div class="cal-cell ${isToday ? "today" : ""} ${phaseClass}" data-date="${ds}">
-      <span>${day}</span><span class="moon">${mi.e}</span><span class="dots">${dots}</span></div>`;
+    const fullDay = phaseDay0.fullmoon.has(ds) ? "fullmoon-day" : "";
+    cells += `<div class="cal-cell moon-cell ${isToday ? "today" : ""} ${phaseClass} ${fullDay}" data-date="${ds}">
+      <span>${day}</span>
+      <button type="button" class="moon-chip" data-moon-date="${ds}" aria-label="${esc(fmtMD(ds))} ${esc(mi.n)}，照度 ${pct}%，點開看詳細月相"><span class="moon">${mi.e}</span><em>${pct}%</em></button>
+      <span class="dots">${dots}</span></div>`;
   }
   /* 心情日曆：格式與上方月相相同，格子中只顯示心情圖示，方便對照心情與月相的關聯 */
   const mm = moodMap();
@@ -3293,6 +3312,12 @@ function renderMoon() {
   $("#cal-prev").addEventListener("click", () => { calCursor = new Date(y, mo - 1, 1); renderMoon(); });
   $("#cal-next").addEventListener("click", () => { calCursor = new Date(y, mo + 1, 1); renderMoon(); });
   $$(".cal-cell[data-date]", el).forEach(c => c.addEventListener("click", () => showDayDetail(c.dataset.date)));
+  // 月亮＋百分比那顆是「詳細月相」入口：今天直接開即時抽屜，其他天在月曆下方展開當天的月相細節
+  $$(".moon-chip", el).forEach(b => b.addEventListener("click", e => {
+    e.stopPropagation();
+    const ds = b.dataset.moonDate;
+    if (ds === todayStr()) { showDayDetail(ds); openMoonLive(); } else showDayDetail(ds, { moon: true });
+  }));
   bindMoodPicker(el, "moon", () => renderMoon());
   $$(".mood-cell[data-mood-date]", el).forEach(c => c.addEventListener("click", () => {
     if (c.classList.contains("future")) return toast("還沒到那一天呢 🌙");
@@ -3807,9 +3832,21 @@ function openBilingualArticle(item) {
   return m;
 }
 
-function showDayDetail(ds) {
+function showDayDetail(ds, { moon = false } = {}) {
   $$(".cal-cell").forEach(c => c.classList.toggle("sel", c.dataset.date === ds));
-  const mi = moonInfo(new Date(fromDstr(ds).getTime() + 12 * 3600e3));
+  const noon = new Date(fromDstr(ds).getTime() + 12 * 3600e3);
+  const mi = moonInfo(noon);
+  // 點月亮那顆才展開的月相細節（當天中午的值；今天要看即時的就從今天那顆開抽屜）
+  const ml = moon ? moonLive(noon) : null;
+  const moonBlock = ml ? `<dl class="ml-grid">
+      <div><dt>照度</dt><dd>${(ml.k * 100).toFixed(1)} %</dd></div>
+      <div><dt>月齡</dt><dd>${ml.age.toFixed(2)} 日</dd></div>
+      <div><dt>地月距離</dt><dd>${fmtKm(ml.dist)} 公里</dd></div>
+      <div><dt>視直徑</dt><dd>${ml.angDiam.toFixed(2)} 角分</dd></div>
+      <div><dt>黃道十二宮</dt><dd>${esc(ml.sign)} ${ml.signDeg.toFixed(1)}°</dd></div>
+      <div><dt>相位</dt><dd>${ml.emoji} ${esc(ml.name)}</dd></div>
+    </dl>
+    <p class="muted small">以當天中午計算。想看即時距離、月出月沒，點今天那顆月亮。</p>` : "";
   const items = [
     ...store.data.dreams.filter(d => d.date === ds).map(d => `🌙 ${esc(d.text.slice(0, 60))}`),
     ...store.data.diary.filter(d => d.date === ds).map(d => `✍️ 心情 ${d.mood}/10 ${esc((d.text || "").slice(0, 50))}`),
@@ -3818,6 +3855,7 @@ function showDayDetail(ds) {
   $("#cal-detail").innerHTML = `
     <div style="margin-top:12px;border-top:1px solid var(--line);padding-top:10px">
       <b>${esc(fmtMD(ds))}</b> ${mi.e} ${esc(mi.n)}・月齡 ${mi.age.toFixed(1)} 天
+      ${moonBlock}
       ${items.length ? items.map(i => `<div class="small" style="margin-top:6px">${i}</div>`).join("") : `<p class="muted small" style="margin-top:6px">這天沒有紀錄</p>`}
     </div>`;
 }
@@ -5072,6 +5110,54 @@ function checkBroadcasts() {
   };
   setTimeout(tryShow, 1200);
 }
+/* ---------- 新月／滿月當天：開 App 的許願提示（每個朔望日只跳一次） ---------- */
+const PHASE_POPUP_MS = 5000;
+function todayPhaseDay() {
+  const t = todayStr(), starts = phaseStartDays(new Date());
+  for (const [type, label, emoji] of [["fullmoon", "滿月", "🌕"], ["newmoon", "新月", "🌑"]]) {
+    if (starts[type].some(d => dstr(d) === t)) return { type, label, emoji, key: `${t}|${type}` };
+  }
+  return null;
+}
+function checkPhasePopup() {
+  const p = todayPhaseDay();
+  if (!p) return;
+  const seen = store.data.settings.phasePopupSeen ||= {};
+  if (seen[p.key]) return;
+  // 跟站內通報一樣：魔法書與其他彈窗會蓋住畫面，等淨空再跳；等太久就放棄，這天下次開 App 還會再試
+  const busy = () => {
+    const bk = document.getElementById("book-landing");
+    return !!$(".modal-mask") || !!(bk && !bk.classList.contains("hidden"));
+  };
+  const tryShow = (tries = 0) => {
+    if (busy()) return tries < 150 ? setTimeout(() => tryShow(tries + 1), 800) : undefined;
+    if (store.data.settings.phasePopupSeen[p.key]) return;
+    showPhasePopup(p);
+  };
+  setTimeout(tryShow, 1500);
+}
+function showPhasePopup(p) {
+  // 一出現就算「看過」：之後同一天不管怎麼關、重開都不再跳
+  const seen = store.data.settings.phasePopupSeen;
+  for (const k of Object.keys(seen)) if (!k.startsWith(todayStr())) delete seen[k];   // 舊的朔望日清掉，不讓它一直長
+  seen[p.key] = true;
+  store.save();
+  const m = modal(`
+    <div class="phase-pop">
+      <div class="pp-emoji" aria-hidden="true">${p.emoji}</div>
+      <h3>本日為${p.label} ${p.emoji}</h3>
+      <p>晚上請記得許願 ✨</p>
+      <span class="pp-bar" aria-hidden="true"><i style="animation-duration:${PHASE_POPUP_MS}ms"></i></span>
+      <button class="btn secondary" id="pp-skip" type="button">SKIP</button>
+    </div>`);
+  m.classList.add("phase-mask");
+  m.setAttribute("role", "dialog");
+  m.setAttribute("aria-label", `本日為${p.label}，晚上請記得許願`);
+  const timer = setTimeout(() => m.remove(), PHASE_POPUP_MS);
+  $("#pp-skip", m).addEventListener("click", () => { clearTimeout(timer); m.remove(); });
+  // 點外面關掉時也要把計時器收掉（modal() 預設只會 remove 節點）
+  m.addEventListener("click", e => { if (e.target === m) clearTimeout(timer); });
+}
 function showBroadcast(b) {
   // 純公告（例如道歉啟事）沒有 reward，不套用「領取獎勵」那套話術與雙按鈕
   const hasReward = !!b.reward;
@@ -5526,6 +5612,7 @@ addEventListener("appinstalled", () => {
   addEventListener("resize", syncHeaderHeight);
   checkEventNotifications();
   checkBroadcasts();
+  checkPhasePopup();
   checkSummonCharges({ silent: true });
   bindAutoReseal();
   // 星塵帳號：有 token 就標成「待解鎖」，並問後端這功能有沒有啟用
