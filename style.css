@@ -343,7 +343,12 @@ nav.tabbar button {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 2px; font-size: .68rem; color: var(--ink-3);
 }
-nav.tabbar button .ico { font-size: 1.25rem; }
+nav.tabbar a.tab-link {
+  flex: 0 0 calc(100% / 6); scroll-snap-align: start; text-decoration: none;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 2px; font-size: .68rem; color: var(--gold);
+}
+nav.tabbar button .ico, nav.tabbar a.tab-link .ico { font-size: 1.25rem; }
 nav.tabbar button.on { color: var(--accent); }
 /* 右側漸層提示：暗示還有更多分頁可以滑 */
 nav.tabbar::after {
@@ -390,22 +395,34 @@ nav.tabbar::after {
   50% { border-color: color-mix(in srgb, var(--accent) 80%, transparent); box-shadow: 0 0 7px color-mix(in srgb, var(--accent) 40%, transparent); }
 }
 /* 滿月「當天」的外框：金色漸層繞著格子轉。之後兩天維持原本靜態的金框。
-   轉的是一塊比格子大的錐形漸層，外面的 overflow:hidden 負責裁成格子形狀，
-   裡面再蓋一層格子底色只露出 3px 邊——不靠 @property／mask，舊版 iOS 也轉得動。 */
+   外框的盒子大小和其他兩天完全一樣（同樣 2px border）——不用 overflow／偽元素去蓋，
+   只是把 border 這一圈的背景換成會轉的錐形漸層（padding-box 放格子底色、border-box 放漸層）。
+   會轉靠 @property，不支援的瀏覽器（舊 iOS）由 app.js 不加 .houdini，退回一圈靜態的金色漸層框。 */
+@property --gold-ang { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
 .cal-cell.fullmoon.fullmoon-day {
-  border: 0; overflow: hidden; isolation: isolate;
+  border-color: transparent;
+  background:
+    linear-gradient(var(--surface-2), var(--surface-2)) padding-box,
+    linear-gradient(135deg, #fff6cf, #e8c874 45%, #b8912f) border-box;
   box-shadow: 0 0 14px rgba(232,200,116,.45);
 }
-.cal-cell.fullmoon-day::before {
-  content: ""; position: absolute; inset: -60%; z-index: -2;
-  background: conic-gradient(#fff6cf, #f2cf6b, #b8912f, #f2cf6b, #fff6cf);
+.cal-cell.fullmoon.fullmoon-day.sel {
+  background:
+    linear-gradient(var(--accent-soft), var(--accent-soft)) padding-box,
+    linear-gradient(135deg, #fff6cf, #e8c874 45%, #b8912f) border-box;
+}
+.houdini .cal-cell.fullmoon.fullmoon-day {
+  background:
+    linear-gradient(var(--surface-2), var(--surface-2)) padding-box,
+    conic-gradient(from var(--gold-ang), #fff6cf, #f2cf6b, #b8912f, #f2cf6b, #fff6cf) border-box;
   animation: gold-spin 3.6s linear infinite;
 }
-.cal-cell.fullmoon-day::after {
-  content: ""; position: absolute; inset: 3px; z-index: -1;
-  border-radius: 7px; background: inherit;
+.houdini .cal-cell.fullmoon.fullmoon-day.sel {
+  background:
+    linear-gradient(var(--accent-soft), var(--accent-soft)) padding-box,
+    conic-gradient(from var(--gold-ang), #fff6cf, #f2cf6b, #b8912f, #f2cf6b, #fff6cf) border-box;
 }
-@keyframes gold-spin { to { transform: rotate(360deg); } }
+@keyframes gold-spin { to { --gold-ang: 360deg; } }
 .cal-cell .dots { display: flex; gap: 2px; height: 5px; }
 .cal-cell .dots i { width: 4px; height: 4px; border-radius: 50%; display: block; }
 .dot-dream { background: var(--cal-dream); }
@@ -1202,6 +1219,17 @@ header.app-header .today-moon.hint { animation: ml-hint 2.8s ease-in-out infinit
 
 @media (prefers-reduced-motion: reduce) {
   .cal-cell .moon-chip { animation: none; border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
-  .cal-cell.fullmoon-day::before { animation: none; }
+  .houdini .cal-cell.fullmoon.fullmoon-day { animation: none; }
   .pp-bar i { animation: none; }
 }
+
+/* 水晶詳情：最常見功效標籤 */
+.fx-tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 10px; }
+.fx-tag {
+  font-size: .76rem; padding: 3px 10px; border-radius: 999px;
+  background: var(--accent-soft); color: var(--ink); border: 1px solid var(--line);
+}
+
+/* 颱風天安慰視窗 */
+.comfort-pop .comfort-line { font-size: 1.15rem; line-height: 1.6; color: var(--ink); margin: 10px 4px 12px; text-wrap: balance; }
+.comfort-pop .btn-row { justify-content: center; }

@@ -4,7 +4,7 @@
    前端的 controllerchange 才會跳出「有新版本」橫幅。 */
 const CACHE = "dreamtide-v26-2026.10.14";
 /* 核心殼層：一定要進快取才算安裝成功 */
-const CORE = ["./", "index.html", "style.css", "app.js", "crystals.js", "cloud.js", "account.js", "manifest.webmanifest"];
+const CORE = ["./", "index.html", "style.css", "copy.js", "app.js", "crystal-data.js", "crystals.js", "cloud.js", "account.js", "manifest.webmanifest"];
 /* 加分資產：抓不到也不該讓整個 SW 安裝失敗（失敗 → 沒有 SW → PWA 就不能安裝了）。
    祭壇背景（assets/altar/*.webp）刻意不預快取——30 張一次抓太重，交給 fetch 事件用到才存。 */
 const EXTRA = ["assets/altar.jpg", "icons/icon-192.png", "icons/icon-512.png", "icons/apple-touch-icon.png"];
