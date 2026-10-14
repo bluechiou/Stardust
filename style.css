@@ -121,10 +121,17 @@ body::before {
 }
 
 header.app-header {
-  padding: 18px 18px 6px;
+  /* iPhone 加到主畫面後狀態列是透明的（black-translucent + viewport-fit=cover），內容會從螢幕最上緣開始畫。
+     標題列不避開瀏覽器給的安全區，就會被狀態列／動態島蓋住——看不到，右上角的月相鈕也點不到
+     （點狀態列區域只會讓頁面捲回頂端）。所以上緣要把安全區墊出來。 */
+  padding: calc(18px + env(safe-area-inset-top, 0px)) 18px 6px;
   display: flex; align-items: baseline; justify-content: space-between;
   border-bottom: 1px solid rgba(139, 127, 240, 0.1);
+  /* 釘住之後底下的內容會從後面捲過，需要一層底色才讀得清楚 */
+  background: color-mix(in srgb, var(--bg) 84%, transparent);
+  -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
+  position: -webkit-sticky;
   position: sticky;
   top: 0;
   z-index: 100;
@@ -348,13 +355,15 @@ nav.tabbar::after {
 /* moon calendar */
 .cal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
 .cal-head b { font-size: 1.02rem; }
-.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+/* minmax(0,1fr)：格子內容再高，也不准把整排欄寬撐開（aspect-ratio 會讓高度反過來撐寬度） */
+.cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
 .cal-grid .dow { text-align: center; font-size: .68rem; color: var(--ink-3); padding: 4px 0; }
 .cal-cell {
   aspect-ratio: 1 / 1.15; border-radius: 10px; background: var(--surface-2);
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 1px; font-size: .72rem; color: var(--ink-2); position: relative; border: 1px solid transparent;
 }
+.cal-cell.moon-cell { line-height: 1.25; gap: 2px; }
 .cal-cell.blank { background: none; }
 .cal-cell.today { border-color: var(--accent); }
 .cal-cell.sel { background: var(--accent-soft); }
@@ -366,6 +375,37 @@ nav.tabbar::after {
 .cal-cell.fullmoon { border: 2px solid var(--cal-fullmoon); box-shadow: 0 0 12px rgba(232,200,116,.35), inset 0 0 0 1px rgba(232,200,116,.4); }
 .cal-cell.today.newmoon, .cal-cell.today.fullmoon { border-width: 2px; }
 .cal-cell .moon { font-size: .95rem; }
+/* 日期旁的「月亮＋照度%」：同時是「詳細月相」的入口，所以邊框會慢慢亮起來提示可以點 */
+.cal-cell .moon-chip {
+  display: flex; flex-direction: column; align-items: center; gap: 0;
+  padding: 1px 4px 2px; line-height: 1; cursor: pointer;
+  font: inherit; color: var(--ink-2); background: transparent;
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent); border-radius: 9px;
+  animation: chip-pulse 2.8s ease-in-out infinite;
+}
+.cal-cell .moon-chip .moon { font-size: .82rem; line-height: 1.15; }
+.cal-cell .moon-chip em { font-style: normal; font-size: .54rem; font-variant-numeric: tabular-nums; color: var(--ink-3); }
+@keyframes chip-pulse {
+  0%, 100% { border-color: color-mix(in srgb, var(--accent) 18%, transparent); box-shadow: 0 0 0 transparent; }
+  50% { border-color: color-mix(in srgb, var(--accent) 80%, transparent); box-shadow: 0 0 7px color-mix(in srgb, var(--accent) 40%, transparent); }
+}
+/* 滿月「當天」的外框：金色漸層繞著格子轉。之後兩天維持原本靜態的金框。
+   轉的是一塊比格子大的錐形漸層，外面的 overflow:hidden 負責裁成格子形狀，
+   裡面再蓋一層格子底色只露出 3px 邊——不靠 @property／mask，舊版 iOS 也轉得動。 */
+.cal-cell.fullmoon.fullmoon-day {
+  border: 0; overflow: hidden; isolation: isolate;
+  box-shadow: 0 0 14px rgba(232,200,116,.45);
+}
+.cal-cell.fullmoon-day::before {
+  content: ""; position: absolute; inset: -60%; z-index: -2;
+  background: conic-gradient(#fff6cf, #f2cf6b, #b8912f, #f2cf6b, #fff6cf);
+  animation: gold-spin 3.6s linear infinite;
+}
+.cal-cell.fullmoon-day::after {
+  content: ""; position: absolute; inset: 3px; z-index: -1;
+  border-radius: 7px; background: inherit;
+}
+@keyframes gold-spin { to { transform: rotate(360deg); } }
 .cal-cell .dots { display: flex; gap: 2px; height: 5px; }
 .cal-cell .dots i { width: 4px; height: 4px; border-radius: 50%; display: block; }
 .dot-dream { background: var(--cal-dream); }
@@ -1148,4 +1188,20 @@ header.app-header .today-moon.hint { animation: ml-hint 2.8s ease-in-out infinit
 @media (prefers-reduced-motion: reduce) {
   .mlive-mask, .mlive { transition: none; }
   header.app-header .today-moon.hint { animation: none; border-color: var(--gold); }
+}
+
+/* ================= 新月／滿月當天的許願提示 ================= */
+.modal-mask.phase-mask { align-items: center; padding: 24px; background: rgba(0, 0, 0, .62); }
+.phase-mask .modal { border-radius: 22px; max-width: 340px; text-align: center; padding: 26px 22px 20px; }
+.phase-pop .pp-emoji { font-size: 3.4rem; line-height: 1.1; filter: drop-shadow(0 0 16px rgba(232, 200, 116, .45)); }
+.phase-pop h3 { margin: 6px 0 4px; font-size: 1.2rem; }
+.phase-pop p { color: var(--ink-2); margin-bottom: 14px; }
+.pp-bar { display: block; height: 3px; border-radius: 999px; background: var(--surface-2); overflow: hidden; margin: 0 6px 14px; }
+.pp-bar i { display: block; height: 100%; width: 100%; background: linear-gradient(90deg, var(--gold), var(--accent)); transform-origin: left; animation: pp-count linear forwards; }
+@keyframes pp-count { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .cal-cell .moon-chip { animation: none; border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+  .cal-cell.fullmoon-day::before { animation: none; }
+  .pp-bar i { animation: none; }
 }
