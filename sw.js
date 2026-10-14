@@ -2,9 +2,9 @@
 /* 版本號要和 app.js 的 APP_VERSION 一起往上加。
    改了這個字串，瀏覽器就會判定 sw.js 有變、安裝新的 SW，
    前端的 controllerchange 才會跳出「有新版本」橫幅。 */
-const CACHE = "dreamtide-v26-2026.10.14";
+const CACHE = "dreamtide-v27-2026.10.14.2";
 /* 核心殼層：一定要進快取才算安裝成功 */
-const CORE = ["./", "index.html", "style.css", "app.js", "crystals.js", "cloud.js", "account.js", "manifest.webmanifest"];
+const CORE = ["./", "index.html", "style.css", "copy.js", "app.js", "crystal-data.js", "crystals.js", "cloud.js", "account.js", "manifest.webmanifest"];
 /* 加分資產：抓不到也不該讓整個 SW 安裝失敗（失敗 → 沒有 SW → PWA 就不能安裝了）。
    祭壇背景（assets/altar/*.webp）刻意不預快取——30 張一次抓太重，交給 fetch 事件用到才存。 */
 const EXTRA = ["assets/altar.jpg", "icons/icon-192.png", "icons/icon-512.png", "icons/apple-touch-icon.png"];
@@ -25,6 +25,7 @@ self.addEventListener("fetch", e => {
   if (e.request.method !== "GET") return;
   const url = new URL(e.request.url);
   if (url.pathname.includes("/api/")) return;          // API 不進快取
+  if (url.pathname.startsWith("/admin")) return;     // 後台是另一支 App（admin.html），不歸這個 SW 管，也不能被快取到前台殼層
   /* 只接管自己網域的請求。第三方腳本（Google 登入的 accounts.google.com 等）
      交給瀏覽器自己處理：以前一律攔下來，它們只要載入失敗就會拿到下面那份
      index.html，於是 <script> 收到一坨 HTML，變成 "Unexpected token '<'"，

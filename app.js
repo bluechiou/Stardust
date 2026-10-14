@@ -4,7 +4,7 @@
 
 /* 版本號：每次要讓使用者看到新東西時，這裡和 sw.js 的 CACHE 一起往上加。
    設定分頁會顯示這個號碼，回報問題時報這個數字最快能判斷對方在哪一版。 */
-const APP_VERSION = "2026.10.14";
+const APP_VERSION = "2026.10.14.2";
 
 /* ---------- 小工具 ---------- */
 const $ = (sel, el = document) => el.querySelector(sel);
@@ -105,9 +105,9 @@ const SHELL_COLORS = [
 const SHELL_BY_KEY = Object.fromEntries(SHELL_COLORS.map(c => [c.key, c]));
 const SHELL_FRAGMENTS_PER_SHELL = 5;
 /* 機率設定（內部用，不寫進公開文案）：
-   切換分頁時 3.3% 出現流星雨；流星雨出現後，再以 8% 掉落一片碎片（整體約 0.26%）。
+   切換分頁時 3% 出現流星雨；流星雨出現後，再以 8% 掉落一片碎片（整體約 0.24%）。
    召喚儀式有 10% 摃龜（神奇海螺偏忙碌）。 */
-const METEOR_SHOWER_CHANCE = 0.033;
+const METEOR_SHOWER_CHANCE = 0.03;
 const METEOR_FRAGMENT_CHANCE = 0.08;
 const SUMMON_MISS_CHANCE = 0.10;
 const SUMMON_PER_STREAK_DAYS = 3;   // 連續紀錄幾天轉化一次召喚機會
@@ -196,7 +196,6 @@ function shellVaultHTML() {
 
 /* ---------- 心情 5 Level（心情日曆用；圖示可自訂） ----------
    level 1 = 最好、5 = 最壞；日曆格子只顯示圖示，方便和上方月相盈缺對照。 */
-const MOOD_LABELS = ["大晴天", "晴天", "陰天", "雨天", "颱風天 （or軟今天）"];
 const MOOD_SETS = {
   weather: { name: "天氣", icons: ["☀️", "🌤", "☁️", "🌧", "🌪"] },
   color:   { name: "顏色", icons: ["🟦", "🟩", "🟨", "🟧", "🟥"] },
@@ -211,7 +210,8 @@ function moodIcons() {
   return (MOOD_SETS[moodSetKey()] || MOOD_SETS.weather).icons;
 }
 function moodIcon(level) { return moodIcons()[level - 1] || ""; }
-function moodLabel(level) { return MOOD_LABELS[level - 1] || ""; }
+function moodLabels() { return C("mood.labels"); }
+function moodLabel(level) { return moodLabels()[level - 1] || ""; }
 function moodMap() {
   const m = new Map();
   for (const x of store.data.moods) m.set(x.date, x);
@@ -227,20 +227,23 @@ function setMood(ds, level, note) {
 }
 
 /* ---------- 正向心態小工具：三件感謝、小勝利聖杯、自我關懷 ---------- */
-const SELF_COMPASSION = [
-  "如果今天的你只做到一點點，那也已經足夠了。",
-  "對自己說一句，你平常會對好朋友說的安慰話語。",
-  "情緒不需要被解決，它只需要先被你發現。",
-  "你不必時刻都堅強，一邊流淚一邊勇敢也可以。",
-  "犯錯不會損失你的價值，那是你正在學習的證據。",
-  "此刻的難受會過去，你已經撐過 99% 的難關。",
-  "允許自己慢慢來，我們不需要跟任何人比賽。",
-  "願意記錄自己內在輪廓，就是一種很深層的自我照顧。",
-];
 function todaySelfCompassion() {
   const d = new Date();
   const seed = d.getFullYear() * 1000 + (d.getMonth() + 1) * 40 + d.getDate();
-  return SELF_COMPASSION[seed % SELF_COMPASSION.length];
+  const lines = C("compassion.lines");
+  return lines[seed % lines.length];
+}
+/* 三件感謝的提示文案：前兩格從題庫隨機抽（每次開 App 抽一次，不在每次重繪時亂跳），第三格固定 */
+let _gratPick = null;
+function gratitudePrompts() {
+  const pool = C("gratitude.pool");
+  if (!_gratPick || _gratPick.pool !== pool) {
+    const a = Math.floor(Math.random() * pool.length);
+    let b = pool.length > 1 ? Math.floor(Math.random() * (pool.length - 1)) : a;
+    if (pool.length > 1 && b >= a) b++;
+    _gratPick = { pool, picks: [pool[a], pool[b]] };
+  }
+  return [..._gratPick.picks, C("gratitude.third")];
 }
 function gratitudeOf(ds) { return store.data.gratitude.find(g => g.date === ds) || null; }
 function saveGratitude(ds, items) {
@@ -1688,6 +1691,31 @@ function tabOn(key) {
   return !store.data.settings.tabsOff?.[key];
 }
 /* 把使用者收起來的分頁按鈕從底部列隱藏；設定裡勾選後、以及開 App 時各呼叫一次 */
+/* 底部分頁名稱：文字節點在 .ico 之後，只換文字不動圖示 */
+function applyTabLabels() {
+  for (const b of $$(".tabbar button[data-tab], .tabbar a[data-tab]")) {
+    const label = C(`tab.${b.dataset.tab}`);
+    const t = [...b.childNodes].reverse().find(n => n.nodeType === 3);
+    if (t) t.textContent = label; else b.append(label);
+  }
+}
+/* 後台文案：先用上次存在本機的（離線也有），再向伺服器要最新的；有變才重繪 */
+const COPY_CACHE_KEY = "dreamtide.copy";
+function loadCopy() {
+  try { applyCopyOverrides(JSON.parse(localStorage.getItem(COPY_CACHE_KEY))); } catch { /* 沒有快取就用出廠預設 */ }
+  fetch("api/copy", { cache: "no-store" })
+    .then(r => r.ok ? r.json() : null)
+    .then(j => {
+      if (!j || !j.values || typeof j.values !== "object") return;
+      const before = JSON.stringify(COPY_OVERRIDES);
+      if (JSON.stringify(j.values) === before) return;
+      applyCopyOverrides(j.values);
+      try { localStorage.setItem(COPY_CACHE_KEY, JSON.stringify(j.values)); } catch { /* 容量滿了就算了 */ }
+      applyTabLabels();
+      VIEWS[currentTab]?.();
+    })
+    .catch(() => {});
+}
 function applyTabVisibility() {
   for (const b of $$(".tabbar button")) b.classList.toggle("hidden", !tabOn(b.dataset.tab));
 }
@@ -2172,18 +2200,18 @@ function renderToday() {
   const BLOCK_HTML = {
     moonToday: () => `
       <div class="card">
-        <h2>${mi.e} ${esc(mi.n)} <span class="sub">${now.getMonth() + 1}/${now.getDate()}（${WEEKDAYS[now.getDay()]}）月齡 ${mi.age.toFixed(1)} 天・照度 ${mi.illum}%</span></h2>
+        <h2>${mi.e} ${esc(mi.n)} <span class="sub">${now.getMonth() + 1}/${now.getDate()}（${WEEKDAYS[now.getDay()]}）<button type="button" class="ml-link" id="home-moon-link" aria-label="開啟詳細月相資訊">月齡 ${mi.age.toFixed(1)} 天</button>・照度 ${Math.round(moonLive(now).k * 100)}%</span></h2>
         ${sleepBadge(t) ? `<p class="muted small">${esc(sleepBadge(t))}</p>` : ""}
         <div class="btn-row">
-          <button class="btn" id="quick-dream">🌙 記錄夢境</button>
-          <button class="btn secondary" id="quick-diary">✍️ 寫下日記</button>
+          <button class="btn" id="quick-dream">${esc(C("home.moon.dream"))}</button>
+          <button class="btn secondary" id="quick-diary">${esc(C("home.moon.diary"))}</button>
         </div>
       </div>`,
     mood: () => `
       <div class="card">
-        <h2>${todayMood ? moodIcon(todayMood.level) : "🌤"} 今天的心情 <span class="sub">${todayMood ? esc(moodLabel(todayMood.level)) : "點一下就記錄"}</span></h2>
+        <h2>${todayMood ? moodIcon(todayMood.level) : "🌤"} ${esc(C("home.mood.title"))} <span class="sub">${todayMood ? esc(moodLabel(todayMood.level)) : "點一下就記錄"}</span></h2>
         ${moodPickerHTML(todayMood?.level, "home")}
-        <p class="muted small">每天一個圖示，久了就能看出心情和月相的共時性。</p>
+        <p class="muted small">${esc(C("home.mood.hint"))}</p>
       </div>`,
     manifest: () => `
       <div class="card">
@@ -2196,9 +2224,9 @@ function renderToday() {
       </div>`,
     gratitude: () => `
       <div class="card">
-        <h2>🙏 三件感謝 <span class="sub">${grat ? "今天已寫 ✓" : "睡前的小練習"}</span></h2>
-        <p class="muted small">寫下今天三件值得感謝的小事，再小都算數，這是挖掘生命快樂泉源的最佳管道。</p>
-        ${[0, 1, 2].map(i => `<input type="text" class="grat-in" data-i="${i}" maxlength="60" placeholder="${i + 1}. ${["有人對我說了一句什麼話，讓我很開心", "今天吃到了什麼讓你感到很幸福？", "今天忍下來，撐過去的那件事也寫下來"][i]}" value="${esc(grat?.items?.[i] || "")}">`).join("")}
+        <h2>🙏 ${esc(C("home.gratitude.title"))} <span class="sub">${grat ? "今天已寫 ✓" : "睡前的小練習"}</span></h2>
+        <p class="muted small">${esc(C("home.gratitude.intro"))}</p>
+        ${[0, 1, 2].map(i => `<input type="text" class="grat-in" data-i="${i}" maxlength="60" placeholder="${i + 1}. ${esc(gratitudePrompts()[i])}" value="${esc(grat?.items?.[i] || "")}">`).join("")}
         <div class="btn-row"><button class="btn" id="grat-save">存下今天的小感謝</button></div>
       </div>`,
     summon: () => `
@@ -2223,16 +2251,20 @@ function renderToday() {
       </div>`,
     todo: () => `
       <div class="card">
-        <h2>✅ 待辦事項 <span class="sub">${undone.length ? `${undone.length} 件待完成` : "都完成了 🎉"}</span></h2>
+        <h2>✅ ${esc(C("home.todo.title"))} <span class="sub">${undone.length ? `${undone.length} 件待完成` : "都完成了 🎉"}</span></h2>
         <div id="home-td-list">${undone.length
           ? undone.map(x => `<label class="td-item"><input type="checkbox" data-id="${esc(x.id)}"><span class="td-text">${esc(x.text)}</span></label>`).join("")
           : `<p class="muted small">目前沒有未完成的事，為自己拍拍手五十八下。</p>`}</div>
+        <div class="add-emo">
+          <input type="text" id="home-td-input" maxlength="120" placeholder="${esc(C("home.todo.add"))}" aria-label="新增事項">
+          <button type="button" class="btn small" id="home-td-add" aria-label="新增事項">＋</button>
+        </div>
       </div>`,
     notes: () => `
       <div class="card">
         <h2>📓 隨身小本本 <span class="sub">最近 ${recentNotes.length} 則</span></h2>
         <div class="add-emo">
-          <input type="text" id="home-nb-input" placeholder="想到什麼就寫下來⋯按 Enter">
+          <input type="text" id="home-nb-input" placeholder="${esc(C("home.notes.add"))}">
           <button type="button" class="btn small" id="home-nb-add">＋</button>
         </div>
         ${recentNotes.map(n => `<div class="nb-item"><div class="nb-body">${esc(n.text)}</div></div>`).join("")
@@ -2243,7 +2275,7 @@ function renderToday() {
         <h2>🏆 小勝利聖杯 <span class="sub">${store.data.wins.length} 件</span></h2>
         <p class="muted small">今天有什麼「其實我做到了」的小事？丟進聖杯裡，沮喪時再拿出來看。</p>
         <div class="add-emo">
-          <input type="text" id="home-win-input" placeholder="例：今天準時起床了⋯按 Enter">
+          <input type="text" id="home-win-input" placeholder="${esc(C("home.wins.add"))}">
           <button type="button" class="btn small" id="home-win-add">＋</button>
         </div>
         ${recentWins.map(w => `<div class="nb-item"><div class="nb-body">🏆 ${esc(w.text)}</div><div class="nb-meta">${esc(fmtMD(w.date))}</div></div>`).join("")}
@@ -2286,6 +2318,15 @@ function renderToday() {
   $("#manifest-start")?.addEventListener("click", openManifestRitual);
   $("#sleep-ritual")?.addEventListener("click", openSleepRitual);
   $("#home-summon")?.addEventListener("click", () => switchTab("summon"));
+  $("#home-moon-link")?.addEventListener("click", openMoonLive);
+  const addHomeTodo = () => {
+    const v = ($("#home-td-input", el)?.value || "").trim();
+    if (!v) return;
+    store.data.todos.push({ id: uid(), text: v, done: false, createdAt: new Date().toISOString() });
+    store.save(); toast("已加進待辦 ✅"); renderToday();
+  };
+  $("#home-td-add")?.addEventListener("click", addHomeTodo);
+  $("#home-td-input")?.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); addHomeTodo(); } });
   bindMoodPicker(el, "home", () => renderToday());
   $("#grat-save")?.addEventListener("click", () => {
     saveGratitude(t, $$(".grat-in", el).map(i => i.value));
@@ -2348,10 +2389,38 @@ function bindMoodPicker(root, scope, after, ds) {
     } else {
       setMood(date, lv);
       toast(`${moodIcon(lv)} 已記下「${moodLabel(lv)}」`);
+      if (lv === 5) showComfortPopup();
     }
     checkSummonCharges();
     after?.();
   }));
+}
+
+/* 選到最後一級（颱風天）：跳出一句隨機的安慰話語，可以再抽一句 */
+function showComfortPopup() {
+  const lines = C("mood.comfort");
+  let last = -1;
+  const pick = () => {
+    if (lines.length < 2) return lines[0];
+    let i; do { i = Math.floor(Math.random() * lines.length); } while (i === last);
+    last = i; return lines[i];
+  };
+  const m = modal(`
+    <div class="phase-pop comfort-pop">
+      <div class="pp-emoji" aria-hidden="true">${esc(moodIcon(5) || "🌪")}</div>
+      <p class="comfort-line" id="cf-line" aria-live="polite"></p>
+      <p class="muted small">${esc(C("mood.comfortNote"))}</p>
+      <div class="btn-row">
+        <button class="btn" id="cf-ok" type="button">謝謝你 🤍</button>
+        <button class="btn secondary" id="cf-more" type="button">再一句</button>
+      </div>
+    </div>`);
+  m.classList.add("phase-mask");
+  m.setAttribute("role", "dialog");
+  const line = $("#cf-line", m);
+  line.textContent = pick();
+  $("#cf-more", m).addEventListener("click", () => { line.textContent = pick(); });
+  $("#cf-ok", m).addEventListener("click", () => m.remove());
 }
 
 /* 🧩 自訂首頁：開關顯示與上下排序 */
@@ -3369,7 +3438,7 @@ function openMoodStyleForm() {
   const custom = store.data.settings.moodCustomIcons || ["", "", "", "", ""];
   const m = modal(`
     <h3>🎨 心情圖示樣式</h3>
-    <p class="muted small">五個等級由好到壞：${MOOD_LABELS.join("、")}。選一組內建樣式，或自訂成你喜歡的圖示／顏色。</p>
+    <p class="muted small">五個等級由好到壞：${moodLabels().map(esc).join("、")}。選一組內建樣式，或自訂成你喜歡的圖示／顏色。</p>
     <div id="ms-list">
       ${Object.entries(MOOD_SETS).map(([k, v]) => `
         <button type="button" class="ms-row ${cur === k ? "on" : ""}" data-k="${k}">
@@ -3410,7 +3479,7 @@ function openGratitudeForm(ds = todayStr()) {
   const m = modal(`
     <h3>🙏 ${esc(fmtMD(ds))} 的三件感謝</h3>
     <p class="muted small">再小的事都算數。持續寫下去，大腦會學會先看見正向的部分。</p>
-    ${[0, 1, 2].map(i => `<input type="text" class="gf-in" maxlength="60" placeholder="${i + 1}." value="${esc(g?.items?.[i] || "")}">`).join("")}
+    ${[0, 1, 2].map(i => `<input type="text" class="gf-in" maxlength="60" placeholder="${i + 1}. ${esc(gratitudePrompts()[i])}" value="${esc(g?.items?.[i] || "")}">`).join("")}
     <div class="btn-row"><button class="btn" id="gf-save">儲存</button><button class="btn secondary" id="gf-cancel">取消</button></div>`);
   $("#gf-cancel", m).addEventListener("click", () => m.remove());
   $("#gf-save", m).addEventListener("click", () => {
@@ -5595,9 +5664,13 @@ addEventListener("appinstalled", () => {
 });
 
 (async function init() {
+  // 支援 @property 才讓滿月當天的金框轉起來；不支援就維持靜態金框
+  if (window.CSS && typeof CSS.registerProperty === "function") document.documentElement.classList.add("houdini");
   store.load();
   applyTheme(store.data.settings.theme || "night");
   try { await idb.open(); } catch { /* 無 IndexedDB 時照片功能停用 */ }
+  loadCopy();
+  applyTabLabels();
   updateHeaderMoon();
   $("#header-moon").addEventListener("click", toggleMoonLive);
   $$(".tabbar button").forEach(b => b.addEventListener("click", () => switchTab(b.dataset.tab)));
