@@ -14,7 +14,12 @@ stardust.bluechiou.com — 靜態 PWA ＋ Vercel serverless functions。
 ```
 index.html            單頁 App
 app.js / style.css    前端邏輯與樣式
+crystal-data.js       水晶知識庫（CRYSTAL_DB、最普遍功效標籤；前台與後台共用）
 crystals.js           水晶圖鑑・虛擬收藏架・月相×許願儀式（見 docs/crystal-vision.md）
+copy.js               可由後台修改的預設文案登記表＋C(key)（見 docs/admin-setup.md）
+admin.html / admin.js 後台管理 App（/admin；密碼＋指紋登入）
+api/admin.js          後台 API（登入、passkey、文案儲存／歷史）
+api/copy.js           公開文案（前台開啟時讀取後台改過的字）
 cloud.js              Google Drive 備份
 account.js            星塵帳號（email＋密碼・端對端加密同步，見 docs/account-setup.md）
 sw.js                 Service Worker（網路優先）
@@ -117,5 +122,7 @@ commit（2026-07-28 就這樣把已上線的專欄整個滾掉，表現出來是
 - 環境變數（只設在 Vercel，絕不進 git）：`ANTHROPIC_API_KEY`、
   `NOTION_TOKEN`、`STARDUST_AI_MODEL`、`STARDUST_GOOGLE_CLIENT_ID`、
   `ACCOUNT_KV_URL`／`ACCOUNT_KV_TOKEN`（星塵帳號，見 `docs/account-setup.md`）、
-  `BOARD_KV_URL`／`BOARD_KV_TOKEN`（辣妹留言板）
+  `BOARD_KV_URL`／`BOARD_KV_TOKEN`（辣妹留言板）、
+  `ADMIN_PASSWORD`（後台密碼，必設；沒設後台就停用）、`ADMIN_KV_URL`／`ADMIN_KV_TOKEN`
+  （選填，沒設就用 BOARD_KV_*；後台只存「預設文案」與自己的登入資料）。詳見 `docs/admin-setup.md`
 - 自訂網域：`stardust.bluechiou.com`

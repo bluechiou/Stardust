@@ -1,0 +1,17 @@
+{
+  "name": "星塵夢汐 後台",
+  "short_name": "星塵後台",
+  "description": "星塵夢汐的預設文案管理（僅限管理員）",
+  "lang": "zh-Hant",
+  "start_url": "/admin",
+  "scope": "/admin",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0d0d14",
+  "theme_color": "#0d0d14",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

@@ -25,6 +25,7 @@ self.addEventListener("fetch", e => {
   if (e.request.method !== "GET") return;
   const url = new URL(e.request.url);
   if (url.pathname.includes("/api/")) return;          // API 不進快取
+  if (url.pathname.startsWith("/admin")) return;     // 後台是另一支 App（admin.html），不歸這個 SW 管，也不能被快取到前台殼層
   /* 只接管自己網域的請求。第三方腳本（Google 登入的 accounts.google.com 等）
      交給瀏覽器自己處理：以前一律攔下來，它們只要載入失敗就會拿到下面那份
      index.html，於是 <script> 收到一坨 HTML，變成 "Unexpected token '<'"，

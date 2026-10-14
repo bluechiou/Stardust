@@ -1,5 +1,18 @@
 {
   "functions": {
     "api/ai-chat.js": { "maxDuration": 60 }
-  }
+  },
+  "rewrites": [
+    { "source": "/admin", "destination": "/admin.html" }
+  ],
+  "headers": [
+    {
+      "source": "/(admin|admin.html|admin.js|admin.webmanifest)",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" },
+        { "key": "Cache-Control", "value": "no-cache" },
+        { "key": "Referrer-Policy", "value": "no-referrer" }
+      ]
+    }
+  ]
 }
