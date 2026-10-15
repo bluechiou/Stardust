@@ -4,7 +4,7 @@
 
 /* 版本號：每次要讓使用者看到新東西時，這裡和 sw.js 的 CACHE 一起往上加。
    設定分頁會顯示這個號碼，回報問題時報這個數字最快能判斷對方在哪一版。 */
-const APP_VERSION = "2026.10.14.2";
+const APP_VERSION = "2026.10.15";
 
 /* ---------- 小工具 ---------- */
 const $ = (sel, el = document) => el.querySelector(sel);
@@ -166,23 +166,17 @@ function checkSummonCharges({ silent = false } = {}) {
   s.lastTodoDone = done;
   if (gained > 0) s.charges = (s.charges || 0) + gained;
   store.save();
-  if (gained > 0 && !silent) toast(`🔮 解鎖 ${gained} 次神奇海螺召喚儀式！請到「召喚」分頁啟動神奇海螺的能量`);
+  if (gained > 0 && !silent) toast(`🔮 解鎖 ${gained} 次神奇海螺召喚儀式！請到「召喚寶庫」分頁啟動神奇海螺的能量`);
   return gained;
 }
+/* 神奇海螺收藏（碎片＋完整）。召喚與寶庫合併成同一頁之後，這一張卡全頁只出現一次；
+   召喚機會與還差幾天，祭壇本身與「召喚能量如何累積」那張卡已經在講，這裡不再重複。 */
 function shellVaultHTML() {
   const s = shellState();
-  const streak = calcStreak();
-  const rem = streak % SUMMON_PER_STREAK_DAYS;
-  const daysToNext = rem === 0 ? SUMMON_PER_STREAK_DAYS : SUMMON_PER_STREAK_DAYS - rem;
-  const doneRem = countDoneTodos() % SUMMON_PER_TODOS;
-  const todosToNext = doneRem === 0 ? SUMMON_PER_TODOS : SUMMON_PER_TODOS - doneRem;
+  const totalFrag = Object.values(s.frag || {}).reduce((a, b) => a + b, 0);
   return `
-    <h2>🐚 神奇海螺收藏寶庫 <span class="sub beta-tag">測試中</span></h2>
-    <p class="muted small">
-      目前擁有 <b>${s.complete || 0}</b> 顆完整神奇海螺、<b>${s.charges || 0}</b> 次召喚機會。
-      再連續紀錄 ${daysToNext} 天，或再完成 ${todosToNext} 件待辦，就能開啟一次召喚儀式；
-      同元素碎片集滿 ${SHELL_FRAGMENTS_PER_SHELL} 顆會自動合成一顆完整神奇海螺，未來可用於解鎖技能。
-    </p>
+    <h2>🐚 神奇海螺收藏寶庫 <span class="sub">${s.complete || 0} 顆完整・${totalFrag} 片碎片</span></h2>
+    <p class="muted small">同元素碎片集滿 ${SHELL_FRAGMENTS_PER_SHELL} 片會自動合成一顆完整神奇海螺，未來可用於解鎖技能。</p>
     <div class="shell-grid">
       ${SHELL_COLORS.map(c => `
         <div class="shell-item shell-${c.key}${c.rare ? " shell-rare" : ""}">
@@ -190,8 +184,7 @@ function shellVaultHTML() {
           <span class="shell-name">${esc(c.name)}神奇海螺${c.rare ? `<i>${esc(c.rarity)}</i>` : ""}</span>
           <span class="shell-count">${s.frag[c.key] || 0}/${SHELL_FRAGMENTS_PER_SHELL}</span>
         </div>`).join("")}
-    </div>
-    <div class="btn-row"><button class="btn" id="vault-summon">🔮 前往神奇海螺召喚祭壇${s.charges ? `（${s.charges} 次）` : ""}</button></div>`;
+    </div>`;
 }
 
 /* ---------- 心情 5 Level（心情日曆用；圖示可自訂） ----------
@@ -1681,10 +1674,22 @@ const NAV_TABS = [
   { key: "moon",     icon: "📅", label: "月曆" },
   { key: "crystal",  icon: "💎", label: "水晶" },
   { key: "cosmos",   icon: "🌌", label: "宇宙" },
-  { key: "summon",   icon: "🔮", label: "召喚" },
-  { key: "more",     icon: "🗝", label: "寶庫" },
+  { key: "more",     icon: "🔮", label: "召喚寶庫" },   // 2026-10-15 起「召喚」與「寶庫」合併為這一個分頁
   { key: "settings", icon: "⚙️", label: "設定", fixed: true },
 ];
+/* 召喚＋寶庫合併（2026-10-15）：舊版各有一顆分頁按鈕、各自記在 settings.tabsOff。
+   合併後只剩 more：只有「兩顆本來都被收起來」才維持收起，否則使用者本來看得到的功能不能憑空消失。
+   做一次就好（settings.tabsMerged），之後使用者再勾選／取消都只動 more。 */
+function migrateMergedTabs() {
+  const st = store.data.settings;
+  if (st.tabsMerged) return;
+  const off = st.tabsOff || {};
+  if (!(off.more && off.summon)) delete off.more;
+  delete off.summon;
+  st.tabsOff = off;
+  st.tabsMerged = true;
+  store.save();
+}
 function tabOn(key) {
   const t = NAV_TABS.find(x => x.key === key);
   if (t?.fixed) return true;                       // 首頁／設定永遠顯示
@@ -1723,14 +1728,16 @@ function applyTabVisibility() {
 /* ---------- 分頁切換 ---------- */
 const VIEWS = {
   today: renderToday, dream: renderDream, cbt: renderCBT, moon: renderMoon,
-  crystal: () => renderCrystal(), cosmos: renderCosmos, summon: renderSummon,
+  crystal: () => renderCrystal(), cosmos: renderCosmos,
   more: renderMore, settings: renderSettings,
 };
 let currentTab = "today";
 function switchTab(tab) {
+  if (tab === "summon") tab = "more";   // 舊的呼叫端（首頁召喚卡等）仍然到得了祭壇：它現在是召喚寶庫頁的第一張卡
   if (!VIEWS[tab]) tab = "today";
   const changed = tab !== currentTab;
   currentTab = tab;
+  if (changed && tab === "more") _altarNewVisit = true;   // 剛切進來才換祭壇背景；頁內重繪（加小勝利、封膠囊…）不換
   $$(".tabbar button").forEach(b => {
     const on = b.dataset.tab === tab;
     b.classList.toggle("on", on);
@@ -1739,7 +1746,7 @@ function switchTab(tab) {
   $$(".view").forEach(v => v.classList.remove("active"));
   $(`#view-${tab}`).classList.add("active");
   closeMoonLive();      // 換分頁就把即時月相收起來，不然它會蓋住剛切過去的內容
-  if (tab !== "summon") stopAltar(); // 離開召喚頁就停掉雲層動畫
+  if (tab !== "more") stopAltar(); // 離開召喚寶庫頁就停掉雲層動畫
   VIEWS[tab]();
   window.scrollTo({ top: 0 });
   if (changed && !REDUCED_MOTION && Math.random() < METEOR_SHOWER_CHANCE) meteorShowerFX();
@@ -2149,13 +2156,13 @@ const HOME_BLOCKS = [
   { key: "mood",       name: "今日心情打卡",       from: "月曆", def: true },
   { key: "manifest",   name: "今日顯化",           from: "首頁", def: true },
   { key: "gratitude",  name: "三件感謝",           from: "首頁", def: true },
-  { key: "summon",     name: "召喚機會",           from: "召喚", def: true },
+  { key: "summon",     name: "召喚機會",           from: "召喚寶庫", def: true },
   { key: "upcoming",   name: "即將到來的宇宙星象", from: "宇宙", def: true },
   { key: "resurface",  name: "時空膠囊",           from: "首頁", def: true },
   { key: "entries",    name: "今日紀錄",           from: "首頁", def: true },
   { key: "todo",       name: "待辦事項",           from: "思考", def: false },
   { key: "notes",      name: "隨身小本本",         from: "思考", def: false },
-  { key: "wins",       name: "小勝利聖杯",           from: "寶庫", def: false },
+  { key: "wins",       name: "小勝利聖杯",           from: "召喚寶庫", def: false },
   { key: "compassion", name: "今日自我慈悲",       from: "首頁", def: false },
 ];
 const HOME_BY_KEY = Object.fromEntries(HOME_BLOCKS.map(b => [b.key, b]));
@@ -2317,7 +2324,7 @@ function renderToday() {
   $("#quick-diary")?.addEventListener("click", () => openDiaryForm());
   $("#manifest-start")?.addEventListener("click", openManifestRitual);
   $("#sleep-ritual")?.addEventListener("click", openSleepRitual);
-  $("#home-summon")?.addEventListener("click", () => switchTab("summon"));
+  $("#home-summon")?.addEventListener("click", () => switchTab("more"));
   $("#home-moon-link")?.addEventListener("click", openMoonLive);
   const addHomeTodo = () => {
     const v = ($("#home-td-input", el)?.value || "").trim();
@@ -3494,6 +3501,7 @@ function openGratitudeForm(ds = todayStr()) {
    以祭壇圖為底，上層 canvas 疊一層飄動的雲霧與月暈讓背景「活」起來；
    按下召喚後播放銀色魔法陣（與開書的紫金陣不同構造），再揭曉抽到的碎片。 */
 let _altarStop = null;
+let _altarNewVisit = true;   // true＝剛切進召喚寶庫頁，下一次 renderMore 要換一張祭壇背景（switchTab 設定）
 function stopAltar() { _altarStop?.(); _altarStop = null; }
 
 /* ---------- 🌙 祭壇背景輪播 ----------
@@ -3534,9 +3542,9 @@ function pickAltarBackdrop() {
   return pick;
 }
 /* 先把圖預載好再換上去，避免祭壇閃一下黑底 */
-function applyAltarBackdrop(el) {
+function applyAltarBackdrop(el, keep = false) {
   if (!el) return;
-  const name = pickAltarBackdrop();
+  const name = keep && _lastAltarBg ? _lastAltarBg : pickAltarBackdrop();
   const url = `${ALTAR_BG_DIR}${name}.webp`;
   el.dataset.bg = name;
   const swap = () => { el.style.setProperty("--altar-bg", `url("${url}")`); };
@@ -3600,8 +3608,9 @@ function startAltarClouds(cv) {
   return () => { if (raf) cancelAnimationFrame(raf); window.removeEventListener("resize", resize); };
 }
 
-function renderSummon() {
-  const el = $("#view-summon");
+/* 祭壇（召喚寶庫頁的第一張卡）：背景圖＋雲霧動畫＋召喚鈕。事件在 mountAltar() 綁。
+   2026-10-15 起召喚與寶庫合併成同一頁（renderMore），原本的 renderSummon 拆成下面三個 helper。 */
+function altarHTML() {
   const s = shellState();
   const charges = s.charges || 0;
   const streak = calcStreak();
@@ -3609,9 +3618,7 @@ function renderSummon() {
   const daysToNext = rem === 0 ? SUMMON_PER_STREAK_DAYS : SUMMON_PER_STREAK_DAYS - rem;
   const doneRem = countDoneTodos() % SUMMON_PER_TODOS;
   const todosToNext = doneRem === 0 ? SUMMON_PER_TODOS : SUMMON_PER_TODOS - doneRem;
-  const totalFrag = Object.values(s.frag || {}).reduce((a, b) => a + b, 0);
-
-  el.innerHTML = `
+  return `
     <div class="altar">
       <canvas class="altar-clouds" aria-hidden="true"></canvas>
       <div class="altar-inner">
@@ -3629,32 +3636,25 @@ function renderSummon() {
             : `再連續紀錄 <b>${daysToNext}</b> 天，或再完成 <b>${todosToNext}</b> 件待辦，就能開啟一次。`}
         </p>
       </div>
-    </div>
-    <div class="card">
-      <h2>🔮 召喚能量如何累積 <span class="sub beta-tag">測試中</span></h2>
-      <ul class="summon-rules">
-        <li><b>連續紀錄 ${SUMMON_PER_STREAK_DAYS} 天</b>：夢境、思考紀錄、快速心情、日記、小本本、三件感謝、小勝利聖杯、顯化儀式⋯任何一種都算數（目前連續 ${streak} 天）</li>
-        <li><b>完成 ${SUMMON_PER_TODOS} 件待辦</b>：在「思考」分頁的待辦事項打勾（已完成 ${countDoneTodos()} 件）</li>
-        <li><b>流星雨</b>：切換分頁時偶爾會出現，記得趕快許願，有機會拿到神奇海螺碎片</li>
-      </ul>
-      <p class="muted small">碎片屬性隨機出現，也有可能神奇海螺本身偏忙碌，下次才會來。</p>
-    </div>
-    <div class="card">
-      <h2>🐚 目前的收藏 <span class="sub">${s.complete || 0} 顆完整・${totalFrag} 片碎片</span></h2>
-      <div class="shell-grid">
-        ${SHELL_COLORS.map(c => `
-          <div class="shell-item shell-${c.key}${c.rare ? " shell-rare" : ""}">
-            <span class="shell-emoji">${c.emoji}</span>
-            <span class="shell-name">${esc(c.name)}${c.rare ? `<i>${esc(c.rarity)}</i>` : ""}</span>
-            <span class="shell-count">${s.frag[c.key] || 0}/${SHELL_FRAGMENTS_PER_SHELL}</span>
-          </div>`).join("")}
-      </div>
     </div>`;
-
+}
+function summonRulesHTML() {
+  const streak = calcStreak();
+  return `
+    <h2>🔮 召喚能量如何累積 <span class="sub beta-tag">測試中</span></h2>
+    <ul class="summon-rules">
+      <li><b>連續紀錄 ${SUMMON_PER_STREAK_DAYS} 天</b>：夢境、思考紀錄、快速心情、日記、小本本、三件感謝、小勝利聖杯、顯化儀式⋯任何一種都算數（目前連續 ${streak} 天）</li>
+      <li><b>完成 ${SUMMON_PER_TODOS} 件待辦</b>：在「思考」分頁的待辦事項打勾（已完成 ${countDoneTodos()} 件）</li>
+      <li><b>流星雨</b>：切換分頁時偶爾會出現，記得趕快許願，有機會拿到神奇海螺碎片</li>
+    </ul>
+    <p class="muted small">碎片屬性隨機出現，也有可能神奇海螺本身偏忙碌，下次才會來。</p>`;
+}
+/* 把祭壇接上：背景（剛切進來才換一張，頁內重繪沿用同一張）、雲霧動畫、召喚鈕 */
+function mountAltar(el, fresh) {
   stopAltar();
-  applyAltarBackdrop($(".altar", el));
+  applyAltarBackdrop($(".altar", el), !fresh);
   _altarStop = startAltarClouds($(".altar-clouds", el));
-  $("#summon-go")?.addEventListener("click", doSummon);
+  $("#summon-go", el)?.addEventListener("click", doSummon);
 }
 
 /* 扭蛋：10% 摃龜，其餘依權重抽一種元素（星際版極罕見） */
@@ -3683,7 +3683,7 @@ function showSummonResult(miss, result) {
         <p class="muted small">辣妹不氣餒，繼續紀錄，祭壇一直在這裡等著你。</p>
       </div>
       <div class="btn-row"><button class="btn" id="sr-close">好的</button></div>`);
-    $("#sr-close", m).addEventListener("click", () => { m.remove(); renderSummon(); });
+    $("#sr-close", m).addEventListener("click", () => { m.remove(); renderMore(); });
     return;
   }
   const info = SHELL_BY_KEY[result.key];
@@ -3702,7 +3702,7 @@ function showSummonResult(miss, result) {
       <button class="btn" id="sr-close">收下</button>
       ${(s.charges || 0) > 0 ? `<button class="btn secondary" id="sr-again">🔮 再召喚一次</button>` : ""}
     </div>`);
-  $("#sr-close", m).addEventListener("click", () => { m.remove(); renderSummon(); });
+  $("#sr-close", m).addEventListener("click", () => { m.remove(); renderMore(); });
   $("#sr-again", m)?.addEventListener("click", () => { m.remove(); doSummon(); });
 }
 
@@ -3979,18 +3979,23 @@ function openCustomEventForm() {
   });
 }
 
-/* ================= 🗝 寶庫（膠囊・海螺・小勝利・洞察・報告・睡眠） ================= */
+/* ================= 🔮 召喚寶庫（祭壇・海螺收藏・時空膠囊・小勝利・洞察・報告・睡眠） =================
+   2026-10-15：原本的「召喚」與「寶庫」兩個分頁合併成這一頁，神奇海螺收藏全頁只出現一次。
+   版面由上而下：祭壇 → 召喚能量怎麼累積 → 海螺收藏 → 時空膠囊（扭蛋球道）→ 小勝利 → 洞察 → 報告 → 睡眠 → 顧問服務。 */
 function renderMore() {
   const el = $("#view-more");
-  const caps = [...store.data.capsules].sort((a, b) => a.unlockDate.localeCompare(b.unlockDate));
+  const fresh = _altarNewVisit; _altarNewVisit = false;
+  const caps = store.data.capsules;   // 不排序：保持封存順序，新封的一顆放在最後，像一顆顆放進球道
   const t = todayStr();
   const wins = [...store.data.wins].sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
   el.innerHTML = `
+    ${altarHTML()}
+    <div class="card">${summonRulesHTML()}</div>
     <div class="card">${shellVaultHTML()}</div>
     <div class="card">
       <h2>⏳ 時空膠囊 ☄️<span class="sub">${caps.length} 顆</span></h2>
       <p class="muted small">拍下現在、寫給未來的自己，過去的你，也能提醒當下、未來的你，到期之前將完全封存。</p>
-      <div id="cap-list">${caps.map(c => capsuleHTML(c, t)).join("") || ""}</div>
+      ${capsuleShelfHTML(caps, t)}
       <div class="btn-row"><button class="btn" id="cap-new">✉️ 封印一顆新的時空膠囊 🐚</button></div>
     </div>
     <div class="card">
@@ -4030,22 +4035,18 @@ function renderMore() {
       <div class="btn-row"><a class="btn" href="https://lin.ee/NhElh5L" target="_blank" rel="noopener">💬 加入 LINE 官方帳號</a></div>
     </div>
     <p class="disclaimer">星塵夢汐僅供自我紀錄，非供替代專業醫療，無分析治療功能。</p>`;
+  mountAltar(el, fresh);
   $$("[data-report]", el).forEach(b => b.addEventListener("click", () => openReport(+b.dataset.report, b.textContent.trim())));
   renderSleepBox();
   renderInsights();
   renderWinList();
-  $("#vault-summon")?.addEventListener("click", () => switchTab("summon"));
   $("#sl-manual").addEventListener("click", openSleepManual);
   $("#sl-help").addEventListener("click", openSleepImportHelp);
   $("#cap-new").addEventListener("click", openCapsuleForm);
-  $$("#cap-list .cap-open").forEach(b => b.addEventListener("click", () => openCapsule(b.dataset.id)));
-  $$("#cap-list .cap-del").forEach(b => b.addEventListener("click", async () => {
-    if (!confirm("刪除膠囊？")) return;
-    const c = store.data.capsules.find(x => x.id === b.dataset.id);
-    if (c?.photoId) await idb.del(c.photoId);
-    store.data.capsules = store.data.capsules.filter(x => x.id !== b.dataset.id);
-    store.save(); renderMore();
-  }));
+  $$("#cap-shelf .cap-slot", el).forEach(b => b.addEventListener("click", () => openCapsuleInfo(b.dataset.id)));
+  // 剛封存的那顆會從球道左端滾進它的位置：它在下面幾條球道時，捲到看得見的地方
+  $("#cap-shelf .cap-slot.rollin", el)?.scrollIntoView({ block: "nearest" });
+  _capJustAdded = null;
   const addWin = () => {
     const v = ($("#win-input", el)?.value || "").trim();
     if (!v) return;
@@ -4586,21 +4587,70 @@ function finishFocus(completed) {
 }
 
 /* ---🪽 時空膠囊 🐚 --- */
-function capsuleHTML(c, t) {
-  const unlocked = c.unlockDate <= t;
-  if (!unlocked) {
-    const dd = daysBetween(t, c.unlockDate);
-    return `<div class="entry capsule-sealed"><div class="lock">🔒</div>
-      <b>封存中</b><p class="muted small">將於 ${esc(c.unlockDate)} 開啟（還有 ${dd} 天）</p>
-      <p class="muted small">封存於 ${esc(c.created)}</p>
-      <div class="entry-actions" style="justify-content:center"><button class="cap-del" data-id="${esc(c.id)}">刪除</button></div></div>`;
-  }
-  return `<div class="entry center" style="padding:14px 6px">
-    <div style="font-size:1.6rem">${c.opened ? "💌" : "🎁"}</div>
-    <b>${c.opened ? "已開啟的膠囊" : "可以打開了"}</b>
-    <p class="muted small">封於 ${esc(c.created)}・開啟日 ${esc(c.unlockDate)}</p>
-    <div class="btn-row"><button class="btn small cap-open" data-id="${esc(c.id)}">${c.opened ? "再次重溫" : "開啟膠囊"}</button></div>
-    <div class="entry-actions" style="justify-content:center"><button class="cap-del" data-id="${esc(c.id)}">刪除</button></div></div>`;
+/* 扭蛋球道：每顆時空膠囊是一顆小扭蛋，一顆顆放進像保齡球道的收藏架。
+   一條球道放 CAP_PER_LANE 顆，放滿換下一條（像並排的球道）；新封存的一顆會從球道左端滾進它的位置。
+   狀態：sealed 封存中（鎖頭＋倒數天數）／ready 到期可開（發光）／opened 已開啟（蓋子掀開）。 */
+const CAP_PER_LANE = 6;
+const CAP_COLORS = [["#ff7fa8", "#ffe1ec"], ["#4fd1a5", "#dcfaf0"], ["#59a8ff", "#dcecff"],
+  ["#ffc93c", "#fff4cf"], ["#a98bff", "#ece6ff"], ["#ff9a6b", "#ffe5d8"]];   // [上蓋色, 下殼色]
+let _capJustAdded = null;   // 剛封存的膠囊 id：renderMore 用它播滾入動畫，播完就清掉
+const capColorOf = id => { let h = 0; for (const ch of String(id)) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return CAP_COLORS[h % CAP_COLORS.length]; };
+const capState = (c, t) => c.unlockDate > t ? "sealed" : c.opened ? "opened" : "ready";
+function capSlotHTML(c, i, t) {
+  const st = capState(c, t);
+  const [c1, c2] = capColorOf(c.id);
+  const d = daysBetween(t, c.unlockDate);
+  const lbl = st === "sealed" ? `${d} 天` : st === "ready" ? "可開啟" : "已開啟";
+  const aria = st === "sealed" ? `時空膠囊，封存中，還有 ${d} 天開啟` : st === "ready" ? "時空膠囊，可以開啟了" : "時空膠囊，已開啟";
+  const badge = st === "sealed" ? "🔒" : st === "ready" ? "✨" : "✉️";
+  return `<button type="button" class="cap-slot${c.id === _capJustAdded ? " rollin" : ""}" data-id="${esc(c.id)}" data-st="${st}" style="--i:${i}" aria-label="${aria}">
+    <span class="cap-ball" style="--c1:${c1};--c2:${c2}"><span class="cap-top"></span><span class="cap-bot"></span><i class="cap-st">${badge}</i></span>
+    <span class="cap-lbl">${lbl}</span></button>`;
+}
+function capsuleShelfHTML(caps, t) {
+  if (!caps.length) return `<div class="cap-shelf" id="cap-shelf"><div class="cap-lane empty"><p class="cap-empty">球道還空著，封印第一顆膠囊吧</p></div></div>`;
+  const sealed = caps.filter(c => capState(c, t) === "sealed");
+  const ready = caps.filter(c => capState(c, t) === "ready").length;
+  const opened = caps.length - sealed.length - ready;
+  const next = sealed.map(c => c.unlockDate).sort()[0];
+  const lanes = [];
+  for (let i = 0; i < caps.length; i += CAP_PER_LANE) lanes.push(caps.slice(i, i + CAP_PER_LANE));
+  const sum = [sealed.length ? `封存中 ${sealed.length}` : "", ready ? `可開啟 ${ready}` : "", opened ? `已開啟 ${opened}` : ""].filter(Boolean).join("・");
+  return `
+    <p class="muted small cap-sum">${sum}${next ? `・下一顆 ${esc(next.slice(0, 4) === t.slice(0, 4) ? fmtMD(next) : next)} 開啟（還有 ${daysBetween(t, next)} 天）` : ""}</p>
+    <div class="cap-shelf" id="cap-shelf">${lanes.map((lane, li) => `
+      <div class="cap-lane">${lane.map((c, i) => capSlotHTML(c, i, t)).join("")}</div>`).join("")}</div>`;
+}
+async function deleteCapsule(id) {
+  if (!confirm("刪除膠囊？")) return false;
+  const c = store.data.capsules.find(x => x.id === id);
+  if (c?.photoId) await idb.del(c.photoId);
+  store.data.capsules = store.data.capsules.filter(x => x.id !== id);
+  store.save();
+  return true;
+}
+/* 點球道上的一顆扭蛋：封存中只看得到日期與倒數（內容完全封存）；到期後才能開啟、重溫 */
+function openCapsuleInfo(id) {
+  const c = store.data.capsules.find(x => x.id === id);
+  if (!c) return;
+  const t = todayStr(), st = capState(c, t);
+  const head = st === "sealed"
+    ? `<div class="cap-info-ico">🔒</div><h3>封存中</h3>
+       <p class="muted small">封存於 ${esc(c.created)}<br>將於 ${esc(c.unlockDate)} 開啟（還有 ${daysBetween(t, c.unlockDate)} 天）</p>`
+    : `<div class="cap-info-ico">${c.opened ? "💌" : "🎁"}</div><h3>${c.opened ? "已開啟的膠囊" : "可以打開了"}</h3>
+       <p class="muted small">封於 ${esc(c.created)}・開啟日 ${esc(c.unlockDate)}</p>`;
+  const m = modal(`
+    <div class="center">${head}</div>
+    <div class="btn-row">
+      ${st === "sealed" ? "" : `<button class="btn" id="ci-open">${c.opened ? "再次重溫" : "開啟膠囊"}</button>`}
+      <button class="btn ghost" id="ci-del">🗑 刪除</button>
+      <button class="btn secondary" id="ci-close">關閉</button>
+    </div>`);
+  $("#ci-close", m).addEventListener("click", () => m.remove());
+  $("#ci-open", m)?.addEventListener("click", () => { m.remove(); openCapsule(id); });
+  $("#ci-del", m).addEventListener("click", async () => {
+    if (await deleteCapsule(id)) { m.remove(); renderMore(); }
+  });
 }
 function openCapsuleForm() {
   const nextYear = new Date(); nextYear.setFullYear(nextYear.getFullYear() + 1);
@@ -4624,7 +4674,7 @@ function openCapsuleForm() {
     if (file) { c.photoId = "cap_" + c.id; await idb.put(c.photoId, await photoToDataURL(file)); }
     store.data.capsules.push(c);
     store.save(); m.remove();
-    magicFX("sigil", "封印時空膠囊⋯", () => { renderMore(); toast("已封存 🔒 時間會將它送回你的身邊"); }, { finale: "🔒" });
+    magicFX("sigil", "封印時空膠囊⋯", () => { _capJustAdded = c.id; renderMore(); toast("已封存 🔒 時間會將它送回你的身邊"); }, { finale: "🔒" });
   });
 }
 async function openCapsule(id) {
@@ -5674,6 +5724,7 @@ addEventListener("appinstalled", () => {
   updateHeaderMoon();
   $("#header-moon").addEventListener("click", toggleMoonLive);
   $$(".tabbar button").forEach(b => b.addEventListener("click", () => switchTab(b.dataset.tab)));
+  migrateMergedTabs();    // 召喚＋寶庫合併：把舊的收起設定換算成新的一顆（只做一次）
   applyTabVisibility();   // 依使用者的「功能顯示」設定收起用不到的分頁
   handleReferralHash();
   handleHashImport();
