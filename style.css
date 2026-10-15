@@ -482,14 +482,15 @@ nav.tabbar::after {
     0 3px 8px rgba(0, 0, 0, .28);
 }
 .cap-lane::before {
-  content: "▸ ▸ ▸ ▸ ▸ ▸ ▸"; position: absolute; left: 8px; right: 8px; top: 50%; transform: translateY(-60%);
+  content: "▸ ▸ ▸ ▸ ▸ ▸ ▸"; content: "▸ ▸ ▸ ▸ ▸ ▸ ▸" / ""; position: absolute; left: 8px; right: 8px; top: 50%; transform: translateY(-60%);
   font-size: .8rem; letter-spacing: .5em; text-align: center; white-space: nowrap;
   color: rgba(70, 40, 15, .22); pointer-events: none;
 }
 .cap-lane.empty { display: block; padding: 22px 12px; text-align: center; }
 .cap-lane.empty::before { display: none; }
-.cap-empty { position: relative; margin: 0; font-size: .8rem; color: rgba(60, 35, 12, .78); }
+.cap-empty { position: relative; margin: 0; font-size: .8rem; color: rgba(45, 25, 8, .9); }
 .cap-slot {
+  scroll-margin: calc(var(--header-h, 64px) + 16px) 0 calc(var(--nav-h) + 24px);
   position: relative; z-index: 1; width: 100%; padding: 2px 0 0;
   display: flex; flex-direction: column; align-items: center; gap: 3px;
   background: none; border: 0; cursor: pointer; font-family: inherit; -webkit-tap-highlight-color: transparent;
@@ -502,22 +503,26 @@ nav.tabbar::after {
 .cap-top, .cap-bot { position: absolute; left: 0; right: 0; height: 50%; }
 .cap-top {
   top: 0; border-radius: 999px 999px 0 0; transform-origin: 14% 100%; transition: transform .35s ease;
+  background: var(--c1);
   background:
     radial-gradient(circle at 30% 42%, rgba(255, 255, 255, .9) 0 9%, transparent 10%),
     linear-gradient(160deg, color-mix(in srgb, var(--c1) 78%, #fff) 0%, var(--c1) 55%, color-mix(in srgb, var(--c1) 74%, #000) 100%);
 }
 .cap-bot {
   bottom: 0; border-radius: 0 0 999px 999px;
+  background: var(--c2);
   background: linear-gradient(200deg, #fff 0%, var(--c2) 45%, color-mix(in srgb, var(--c2) 78%, #000) 100%);
 }
 .cap-ball::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 2px; margin-top: -1px; background: rgba(0, 0, 0, .22); }
 .cap-st { position: absolute; right: -5px; bottom: -4px; font-style: normal; font-size: .72rem; line-height: 1; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .55)); }
 /* 到期可開：金色呼吸光暈；已開啟：上蓋掀開、色彩淡一點 */
-.cap-slot[data-st="ready"] .cap-ball { animation: cap-glow 1.8s ease-in-out infinite; }
-@keyframes cap-glow {
-  0%, 100% { filter: drop-shadow(0 4px 3px rgba(40, 20, 5, .45)) drop-shadow(0 0 0 rgba(255, 214, 102, 0)); }
-  50%      { filter: drop-shadow(0 4px 3px rgba(40, 20, 5, .45)) drop-shadow(0 0 9px rgba(255, 214, 102, .95)); }
+.cap-slot[data-st="ready"] .cap-ball::before {
+  content: ""; position: absolute; inset: -7px; border-radius: 50%; z-index: -1; pointer-events: none;
+  background: radial-gradient(circle, rgba(255, 214, 102, .9) 0 42%, rgba(255, 214, 102, 0) 72%);
+  opacity: .6; animation: cap-glow 1.8s ease-in-out infinite;
 }
+@keyframes cap-glow { 0%, 100% { opacity: .2; } 50% { opacity: .95; } }
+.cap-slot[data-st="broken"] .cap-ball { filter: grayscale(1) drop-shadow(0 4px 3px rgba(40, 20, 5, .4)); opacity: .75; }
 .cap-slot[data-st="opened"] .cap-ball { filter: saturate(.6) drop-shadow(0 4px 3px rgba(40, 20, 5, .4)); }
 .cap-slot[data-st="opened"] .cap-top { transform: translate(-3px, -4px) rotate(-22deg); }
 .cap-slot[data-st="opened"] .cap-ball::after { display: none; }
@@ -532,7 +537,7 @@ nav.tabbar::after {
 @keyframes cap-spin { from { transform: rotate(calc(var(--i) * -180deg - 180deg)); } to { transform: none; } }
 @media (max-width: 340px) { .cap-lane { --d: 34px; } .cap-lbl { font-size: .56rem; padding: 2px 3px; } }
 @media (prefers-reduced-motion: reduce) {
-  .cap-slot.rollin, .cap-slot.rollin .cap-ball, .cap-slot[data-st="ready"] .cap-ball { animation: none; }
+  .cap-slot.rollin, .cap-slot.rollin .cap-ball, .cap-slot[data-st="ready"] .cap-ball::before { animation: none; }
   .cap-top { transition: none; }
 }
 .cap-info-ico { font-size: 2.6rem; line-height: 1.1; }
@@ -1305,7 +1310,7 @@ header.app-header .today-moon.hint { animation: ml-hint 2.8s ease-in-out infinit
 /* 水晶詳情：顏色・品種切換（虎眼石、兔毛水晶、膠花…）。點 chip → 上方插圖換色、下方換說明 */
 .var-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 8px; }
 .var-chip { display: inline-flex; align-items: center; gap: 6px; font-size: .8rem; padding: 5px 11px; }
-.var-dot { display: inline-block; flex: none; width: 11px; height: 11px; border-radius: 50%; border: 1px solid rgba(0, 0, 0, .35); }
+.var-dot { display: inline-block; flex: none; width: 11px; height: 11px; border-radius: 50%; border: 1px solid rgba(0, 0, 0, .35); box-shadow: 0 0 0 1px rgba(255, 255, 255, .4); }
 .var-note { background: var(--surface-2); border-radius: 12px; padding: 10px 12px; margin: 0 0 10px; font-size: .84rem; line-height: 1.65; color: var(--ink-2); }
 .var-note b { color: var(--ink); }
 

@@ -771,9 +771,9 @@ function openCrystalDetail(cid) {
       <div class="fx-tags">${c.common.map(f => `<span class="fx-tag">${esc(f)}</span>`).join("")}</div>` : ""}
     ${c.variants?.length ? `<p class="small"><b>🎨 顏色・品種</b> <span class="muted">點一下，上方插圖會換成那一種</span></p>
       <div class="var-chips">${c.variants.map((v, i) => `
-        <button type="button" class="chip var-chip ${i === 0 ? "on" : ""}" data-vi="${i}">
+        <button type="button" class="chip var-chip ${i === 0 ? "on" : ""}" data-vi="${i}" aria-pressed="${i === 0}">
           <i class="var-dot" style="background:${esc(v.sw || "#999")}"></i>${esc(v.name)}</button>`).join("")}</div>
-      <div class="var-note" id="cd-var-note"></div>` : ""}
+      <div class="var-note" id="cd-var-note" aria-live="polite"></div>` : ""}
     <p class="small"><b>🏷 用途</b>：${c.uses.map(u => `${CRYSTAL_USES[u]} ${u}`).join("・")}</p>
     ${moonTags ? `<p class="small"><b>🌙 月相搭配</b>：${moonTags}<br><span class="muted">${esc(c.moonNote)}</span></p>` : `<p class="small muted">${esc(c.moonNote)}</p>`}
     <p class="small"><b>🕊 淨化</b>：${c.cleanse.map(esc).join("・")}</p>
@@ -792,7 +792,7 @@ function openCrystalDetail(cid) {
     const showVariant = i => {
       const v = c.variants[i];
       $(".cd-fig", m).innerHTML = crystalSVG(c, "", v);
-      $$(".var-chip", m).forEach(b => b.classList.toggle("on", +b.dataset.vi === i));
+      $$(".var-chip", m).forEach(b => { const on = +b.dataset.vi === i; b.classList.toggle("on", on); b.setAttribute("aria-pressed", on); });
       $("#cd-var-note", m).innerHTML = `<b>${esc(v.name)}</b>${v.en ? ` <span class="cd-en">${esc(v.en)}</span>` : ""}<br>${esc(v.note || "")}`;
     };
     $$(".var-chip", m).forEach(b => b.addEventListener("click", () => showVariant(+b.dataset.vi)));

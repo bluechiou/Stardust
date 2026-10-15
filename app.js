@@ -3653,7 +3653,8 @@ function summonRulesHTML() {
 function mountAltar(el, fresh) {
   stopAltar();
   applyAltarBackdrop($(".altar", el), !fresh);
-  _altarStop = startAltarClouds($(".altar-clouds", el));
+  // 背景分頁（例如設定頁剛好觸發 renderMore）不啟動動畫，省電；切進召喚寶庫頁時 switchTab 會再重繪一次
+  if (currentTab === "more") _altarStop = startAltarClouds($(".altar-clouds", el));
   $("#summon-go", el)?.addEventListener("click", doSummon);
 }
 
@@ -3985,7 +3986,7 @@ function openCustomEventForm() {
 function renderMore() {
   const el = $("#view-more");
   const fresh = _altarNewVisit; _altarNewVisit = false;
-  const caps = store.data.capsules;   // 不排序：保持封存順序，新封的一顆放在最後，像一顆顆放進球道
+  const caps = store.data.capsules.filter(c => c && typeof c === "object");   // 不排序：保持封存順序，新封的一顆放在最後，像一顆顆放進球道
   const t = todayStr();
   const wins = [...store.data.wins].sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
   el.innerHTML = `
@@ -4595,14 +4596,19 @@ const CAP_COLORS = [["#ff7fa8", "#ffe1ec"], ["#4fd1a5", "#dcfaf0"], ["#59a8ff", 
   ["#ffc93c", "#fff4cf"], ["#a98bff", "#ece6ff"], ["#ff9a6b", "#ffe5d8"]];   // [上蓋色, 下殼色]
 let _capJustAdded = null;   // 剛封存的膠囊 id：renderMore 用它播滾入動畫，播完就清掉
 const capColorOf = id => { let h = 0; for (const ch of String(id)) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return CAP_COLORS[h % CAP_COLORS.length]; };
-const capState = (c, t) => c.unlockDate > t ? "sealed" : c.opened ? "opened" : "ready";
+const CAP_DATE_OK = /^\d{4}-\d{2}-\d{2}$/;
+/* broken＝unlockDate 缺漏或格式不對（手改或損毀的備份才會發生）。獨立成一個狀態並明講，
+   不能悄悄當成「可開啟」，也不能讓這一顆的例外把整頁（連祭壇）弄成空白。 */
+const capState = (c, t) => !c || !CAP_DATE_OK.test(c.unlockDate || "") ? "broken" : c.unlockDate > t ? "sealed" : c.opened ? "opened" : "ready";
 function capSlotHTML(c, i, t) {
   const st = capState(c, t);
   const [c1, c2] = capColorOf(c.id);
-  const d = daysBetween(t, c.unlockDate);
-  const lbl = st === "sealed" ? `${d} 天` : st === "ready" ? "可開啟" : "已開啟";
-  const aria = st === "sealed" ? `時空膠囊，封存中，還有 ${d} 天開啟` : st === "ready" ? "時空膠囊，可以開啟了" : "時空膠囊，已開啟";
-  const badge = st === "sealed" ? "🔒" : st === "ready" ? "✨" : "✉️";
+  const d = st === "sealed" ? daysBetween(t, c.unlockDate) : 0;
+  const lbl = st === "sealed" ? `${d} 天` : st === "ready" ? "可開啟" : st === "opened" ? "已開啟" : "有誤";
+  const who = c.created ? `封於 ${c.created}的` : "";   // 多顆膠囊要聽得出差別：帶上封存日期
+  const aria = st === "sealed" ? `${who}時空膠囊，封存中，還有 ${d} 天開啟` : st === "ready" ? `${who}時空膠囊，可以開啟了`
+    : st === "opened" ? `${who}時空膠囊，已開啟` : `${who}時空膠囊，資料不完整`;
+  const badge = st === "sealed" ? "🔒" : st === "ready" ? "✨" : st === "opened" ? "✉️" : "⚠️";
   return `<button type="button" class="cap-slot${c.id === _capJustAdded ? " rollin" : ""}" data-id="${esc(c.id)}" data-st="${st}" style="--i:${i}" aria-label="${aria}">
     <span class="cap-ball" style="--c1:${c1};--c2:${c2}"><span class="cap-top"></span><span class="cap-bot"></span><i class="cap-st">${badge}</i></span>
     <span class="cap-lbl">${lbl}</span></button>`;
@@ -4611,11 +4617,12 @@ function capsuleShelfHTML(caps, t) {
   if (!caps.length) return `<div class="cap-shelf" id="cap-shelf"><div class="cap-lane empty"><p class="cap-empty">球道還空著，封印第一顆膠囊吧</p></div></div>`;
   const sealed = caps.filter(c => capState(c, t) === "sealed");
   const ready = caps.filter(c => capState(c, t) === "ready").length;
-  const opened = caps.length - sealed.length - ready;
+  const broken = caps.filter(c => capState(c, t) === "broken").length;
+  const opened = caps.length - sealed.length - ready - broken;
   const next = sealed.map(c => c.unlockDate).sort()[0];
   const lanes = [];
   for (let i = 0; i < caps.length; i += CAP_PER_LANE) lanes.push(caps.slice(i, i + CAP_PER_LANE));
-  const sum = [sealed.length ? `封存中 ${sealed.length}` : "", ready ? `可開啟 ${ready}` : "", opened ? `已開啟 ${opened}` : ""].filter(Boolean).join("・");
+  const sum = [sealed.length ? `封存中 ${sealed.length}` : "", ready ? `可開啟 ${ready}` : "", opened ? `已開啟 ${opened}` : "", broken ? `資料不完整 ${broken}` : ""].filter(Boolean).join("・");
   return `
     <p class="muted small cap-sum">${sum}${next ? `・下一顆 ${esc(next.slice(0, 4) === t.slice(0, 4) ? fmtMD(next) : next)} 開啟（還有 ${daysBetween(t, next)} 天）` : ""}</p>
     <div class="cap-shelf" id="cap-shelf">${lanes.map((lane, li) => `
@@ -4634,7 +4641,10 @@ function openCapsuleInfo(id) {
   const c = store.data.capsules.find(x => x.id === id);
   if (!c) return;
   const t = todayStr(), st = capState(c, t);
-  const head = st === "sealed"
+  const head = st === "broken"
+    ? `<div class="cap-info-ico">⚠️</div><h3>這顆膠囊的資料不完整</h3>
+       <p class="muted small">缺少（或讀不懂）開啟日期，所以沒辦法判斷它什麼時候可以開。<br>可能是備份檔被手動改過。你可以刪除它，或先用「匯出 JSON」留一份再處理。</p>`
+    : st === "sealed"
     ? `<div class="cap-info-ico">🔒</div><h3>封存中</h3>
        <p class="muted small">封存於 ${esc(c.created)}<br>將於 ${esc(c.unlockDate)} 開啟（還有 ${daysBetween(t, c.unlockDate)} 天）</p>`
     : `<div class="cap-info-ico">${c.opened ? "💌" : "🎁"}</div><h3>${c.opened ? "已開啟的膠囊" : "可以打開了"}</h3>
@@ -4642,7 +4652,7 @@ function openCapsuleInfo(id) {
   const m = modal(`
     <div class="center">${head}</div>
     <div class="btn-row">
-      ${st === "sealed" ? "" : `<button class="btn" id="ci-open">${c.opened ? "再次重溫" : "開啟膠囊"}</button>`}
+      ${st === "sealed" || st === "broken" ? "" : `<button class="btn" id="ci-open">${c.opened ? "再次重溫" : "開啟膠囊"}</button>`}
       <button class="btn ghost" id="ci-del">🗑 刪除</button>
       <button class="btn secondary" id="ci-close">關閉</button>
     </div>`);
