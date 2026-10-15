@@ -23,8 +23,13 @@ function crystalRng(seed) {
 const _pts = a => a.map(p => p.join(",")).join(" ");
 function _poly(pts, fill, extra = "") { return `<polygon points="${_pts(pts)}" fill="${fill}" ${extra}/>`; }
 
-/* 單根晶柱（六方柱＋錐頂的側視三面）；供 point/cluster 重用 */
-function _pointAt(cx, baseY, h, w, pal, rot = 0, needles = 0, rng = Math.random) {
+/* 取到小數一位，讓 SVG 字串短一點 */
+const _r1 = n => Math.round(n * 10) / 10;
+let _incSeq = 0;
+
+/* 單根晶柱（六方柱＋錐頂的側視三面）；供 point/cluster 重用。
+   inc = { fn, rng, col }：要在晶體內部疊的紋理（鈦晶針、兔毛、幽靈層…），見 POINT_INC。 */
+function _pointAt(cx, baseY, h, w, pal, rot = 0, needles = 0, rng = Math.random, inc = null) {
   const topY = baseY - h, shY = topY + h * 0.28; /* 錐頂肩線 */
   const L = cx - w / 2, R = cx + w / 2, l = cx - w / 6, r = cx + w / 6;
   const faces =
@@ -38,7 +43,14 @@ function _pointAt(cx, baseY, h, w, pal, rot = 0, needles = 0, rng = Math.random)
     const nx = L + w * (0.15 + rng() * 0.7), ny = baseY - h * (0.1 + rng() * 0.3);
     needleLines += `<line x1="${nx}" y1="${ny}" x2="${nx + (rng() - 0.3) * w * 0.5}" y2="${ny - h * (0.3 + rng() * 0.35)}" stroke="#b8860b" stroke-width="1" opacity=".8"/>`;
   }
-  return `<g transform="rotate(${rot} ${cx} ${baseY})">${faces}${needleLines}</g>`;
+  let overlay = "";
+  if (inc) {
+    /* 紋理一律裁在晶體輪廓內，才不會長到石頭外面；clipPath 放在旋轉群組裡，會跟著晶柱一起傾斜 */
+    const id = `pinc${_svgSeq}_${_incSeq++}`;
+    overlay = `<clipPath id="${id}"><polygon points="${_pts([[L, baseY], [L, shY], [cx, topY], [R, shY], [R, baseY]])}"/></clipPath>` +
+      `<g clip-path="url(#${id})">${inc.fn({ cx, baseY, h, w, topY, shY, L, R }, inc.rng, inc.col, id)}</g>`;
+  }
+  return `<g transform="rotate(${rot} ${cx} ${baseY})">${faces}${needleLines}${overlay}</g>`;
 }
 
 /* 底部圍岩基座 */
@@ -54,10 +66,253 @@ function _matrix(rng, y = 100, wide = 66) {
     `<ellipse cx="60" cy="${y + 7}" rx="${wide / 2 + 4}" ry="3.5" fill="${INK}" opacity=".14"/>`;
 }
 
+/* ============================================================
+   紋理疊層：同一種形狀，靠「內含物／光澤」區分石種。
+   資料端只要在 CRYSTAL_DB 條目上寫 tex（種類）與 texCol（顏色）；variants[i] 可以覆蓋
+   pal／tex／texCol，詳細頁切換品種時整張插圖就跟著換色。
+   全部使用 crystalRng(id + "|tex") 的確定性亂數，同一顆每次長一樣，
+   而且和底圖用的亂數分開——加紋理不會讓既有水晶的形狀位移。
+   ============================================================ */
+
+/* 晶柱內部（POINT）：g = 晶柱幾何 { cx, baseY, h, w, topY, shY, L, R } */
+const POINT_INC = {
+  /* 鈦晶／髮晶：細直針由下往上略散開；col 輪流取色（例：金針＋暗金、銅紅＋深褐、銀黑＋銀光） */
+  needles(g, rng, col = ["#b8860b", "#8a6414"]) {
+    let s = "";
+    const n = Math.round(10 + g.h * 0.3);
+    for (let i = 0; i < n; i++) {
+      const x = g.L + g.w * (0.08 + rng() * 0.84), y = g.baseY - g.h * (0.05 + rng() * 0.62);
+      const a = (rng() - 0.5) * 1.2, len = g.h * (0.14 + rng() * 0.3);
+      s += `<line x1="${_r1(x)}" y1="${_r1(y)}" x2="${_r1(x + Math.sin(a) * len)}" y2="${_r1(y - Math.cos(a) * len)}" ` +
+        `stroke="${col[i % col.length]}" stroke-width="${(0.45 + rng() * 0.7).toFixed(2)}" stroke-linecap="round" opacity="${(0.6 + rng() * 0.35).toFixed(2)}"/>`;
+    }
+    return s;
+  },
+  /* 黑髮晶：較粗的黑色電氣石針，從底部扇形放射 */
+  tourm(g, rng, col = ["#16161b", "#34343e"]) {
+    let s = "";
+    const n = Math.round(8 + g.h * 0.2);
+    for (let i = 0; i < n; i++) {
+      const x0 = g.cx + (rng() - 0.5) * g.w * 0.55, y0 = g.baseY - g.h * (0.02 + rng() * 0.22);
+      const a = (rng() - 0.5) * 1.7, len = g.h * (0.3 + rng() * 0.42);
+      s += `<line x1="${_r1(x0)}" y1="${_r1(y0)}" x2="${_r1(x0 + Math.sin(a) * len)}" y2="${_r1(y0 - Math.cos(a) * len)}" ` +
+        `stroke="${col[i % col.length]}" stroke-width="${(0.8 + rng() * 0.9).toFixed(2)}" stroke-linecap="round" opacity=".92"/>`;
+    }
+    return s;
+  },
+  /* 兔毛：一團一團的絨毛（柔霧）＋從絨團向四周伸出的短捲細絲；col = [毛色, 柔霧邊緣色] */
+  hair(g, rng, col = ["#ffffff", "#cfd6e0"], uid = "hair") {
+    let s = `<defs><radialGradient id="${uid}g"><stop offset="0" stop-color="${col[0]}" stop-opacity=".95"/>` +
+      `<stop offset=".55" stop-color="${col[1]}" stop-opacity=".5"/><stop offset="1" stop-color="${col[1]}" stop-opacity="0"/></radialGradient></defs>`;
+    const puffs = [], np = g.h > 50 ? 5 : 3;
+    for (let i = 0; i < np; i++) {
+      const x = g.cx + (rng() - 0.5) * g.w * 0.55, y = g.baseY - g.h * (0.14 + rng() * 0.5), r = g.w * (0.2 + rng() * 0.16);
+      puffs.push([x, y, r]);
+      s += `<circle cx="${_r1(x)}" cy="${_r1(y)}" r="${_r1(r)}" fill="url(#${uid}g)" opacity=".9"/>`;
+    }
+    for (const [x, y, r] of puffs) {
+      for (let k = 0; k < 9; k++) {
+        const a = rng() * Math.PI * 2, l = r * (0.7 + rng() * 0.8);
+        const qx = x + Math.cos(a) * l * 0.5 + (rng() - 0.5) * 3, qy = y + Math.sin(a) * l * 0.5 + (rng() - 0.5) * 3;
+        s += `<path d="M${_r1(x)} ${_r1(y)} Q${_r1(qx)} ${_r1(qy)} ${_r1(x + Math.cos(a + 0.55) * l)} ${_r1(y + Math.sin(a + 0.55) * l)}" ` +
+          `fill="none" stroke="${col[k % 2 ? 1 : 0]}" stroke-width="${(0.4 + rng() * 0.35).toFixed(2)}" stroke-linecap="round" opacity=".85"/>`;
+      }
+    }
+    return s;
+  },
+  /* 幽靈：晶體生長暫停時被覆上一層礦物，再繼續長大；col = 由外到內每層的顏色（一個＝單色幽靈） */
+  phantom(g, rng, col = ["#6aa56a"]) {
+    const n = col.length;
+    let s = "";
+    for (let k = 0; k < n; k++) {
+      const sc = n === 1 ? 0.62 : 0.9 - k * (0.56 / (n - 1));    // 由外到內逐層縮小
+      const px = g.cx, py = g.baseY + g.h * 0.12;                 // 縮放中心略低於底邊，讓幽靈「浮」在晶體裡
+      const P = (x, y) => [px + (x - px) * sc, py + (y - py) * sc];
+      s += _poly([P(g.L, g.baseY), P(g.L, g.shY), P(g.cx, g.topY), P(g.R, g.shY), P(g.R, g.baseY)],
+        col[k], `opacity=".66" stroke="${INK}" stroke-width=".4" stroke-opacity=".35"`);
+    }
+    return s;
+  },
+  /* 膠花：鐵質雲霧＋由底部散開的花瓣狀薄片；col 輪流取色（紅＋黃＝錦鯉） */
+  cloud(g, rng, col = ["#c0452e", "#e07a4a"]) {
+    let s = "";
+    for (let i = 0; i < 6; i++) {
+      const x = g.cx + (rng() - 0.5) * g.w * 0.7, y = g.baseY - g.h * (0.1 + rng() * 0.5);
+      s += `<ellipse cx="${_r1(x)}" cy="${_r1(y)}" rx="${_r1(g.w * (0.14 + rng() * 0.16))}" ry="${_r1(g.h * (0.05 + rng() * 0.07))}" ` +
+        `fill="${col[i % col.length]}" opacity="${(0.32 + rng() * 0.25).toFixed(2)}" transform="rotate(${_r1((rng() - 0.5) * 40)} ${_r1(x)} ${_r1(y)})"/>`;
+    }
+    const bx = g.cx + (rng() - 0.5) * g.w * 0.3, by = g.baseY - g.h * 0.04;
+    for (let i = 0; i < 7; i++) {
+      const a = (i - 3) * 0.28 + (rng() - 0.5) * 0.15, len = g.h * (0.2 + rng() * 0.26);
+      const tx = bx + Math.sin(a) * len, ty = by - Math.cos(a) * len;
+      const qx = bx + Math.sin(a) * len * 0.3 + (rng() - 0.5) * 4, qy = by - Math.cos(a) * len * 0.6;
+      s += `<path d="M${_r1(bx)} ${_r1(by)} Q${_r1(qx)} ${_r1(qy)} ${_r1(tx)} ${_r1(ty)}" fill="none" stroke="${col[i % col.length]}" ` +
+        `stroke-width="${(1.8 + rng() * 1.8).toFixed(1)}" stroke-linecap="round" opacity=".5"/>`;
+    }
+    return s;
+  },
+};
+/* 這幾種是「整塊標本都有」的內含物，小的衛星晶柱也要有；幽靈、膠花只畫在主晶柱 */
+const POINT_INC_ALL = new Set(["needles", "tourm", "hair"]);
+function _pointInc(c, salt = "") {
+  const fn = c.tex && POINT_INC[c.tex];
+  if (!fn) return null;
+  if (salt && !POINT_INC_ALL.has(c.tex)) return null;
+  return { fn, rng: crystalRng(`${c.id}|tex${salt}`), col: c.texCol };
+}
+
+/* 蛋面（CAB，橢圓 cx60 cy62 rx34 ry30）：回傳要疊在底色上的 SVG；seq 用來產生唯一 id */
+const CAB_TEX = {
+  /* 虎眼：平行絲光帶＋一道亮線（貓眼效應）。texCol = [主, 深, 亮]；texCol2 有值＝下半換成第二組（黃藍共生）；
+     eye:false 時不畫亮線（南紅、矽孔雀石這類只借用條帶） */
+  bands(rng, c, seq) {
+    const cols = c.texCol || ["#c98f3d", "#6e4a1c", "#ecc37a"];
+    const bandSet = cs => {
+      let b = "";
+      for (let i = -3; i <= 9; i++) {
+        const y = 14 + i * 7.2, th = 2.6 + rng() * 3.4;
+        b += `<path d="M10 ${_r1(y)} C 40 ${_r1(y + 6)}, 80 ${_r1(y - 6)}, 110 ${_r1(y + 2)} L 110 ${_r1(y + th)} C 80 ${_r1(y - 6 + th)}, 40 ${_r1(y + 6 + th)}, 10 ${_r1(y + th)} Z" ` +
+          `fill="${cs[i & 1 ? 1 : 2]}" opacity="${(0.55 + rng() * 0.3).toFixed(2)}"/>`;
+      }
+      return `<g transform="rotate(-22 60 62)">${b}</g>`;
+    };
+    // 先畫第一組；第二組裁在一條波浪線的下方（clip 放外層，旋轉放內層，裁切才不會跟著轉）
+    let s = `<defs><clipPath id="cabclip${seq}"><ellipse cx="60" cy="62" rx="34" ry="30"/></clipPath>` +
+      `<clipPath id="cabzone${seq}"><path d="M0 70 C 30 48, 62 86, 120 52 L120 120 L0 120 Z"/></clipPath></defs>` +
+      `<g clip-path="url(#cabclip${seq})">${bandSet(cols)}`;
+    // 第二組要先鋪一層自己的底色，不然會和第一組的黃褐色疊成髒髒的混色
+    if (c.texCol2) s += `<g clip-path="url(#cabzone${seq})"><rect x="0" y="0" width="120" height="120" fill="${c.texCol2[0]}"/>${bandSet(c.texCol2)}</g>`;
+    if (c.eye !== false) {
+      s += `<path d="M30 66 Q60 52 92 60" fill="none" stroke="#fff6d8" stroke-width="5" stroke-linecap="round" opacity=".16"/>` +
+        `<path d="M30 66 Q60 52 92 60" fill="none" stroke="#fff6d8" stroke-width="1.5" stroke-linecap="round" opacity=".85"/>`;
+    }
+    return s + `</g>`;
+  },
+  /* 彼得石「風暴」：三條被扯碎的螺旋臂＋金色碎纖維＋閃電折線。texCol = [電光藍, 金, 淡藍, 墨] */
+  storm(rng, c, seq) {
+    const [blue, gold, pale, ink] = c.texCol || ["#4f86e0", "#d9a63e", "#b9d3ff", "#0d1430"];
+    const cx0 = 57, cy0 = 60;
+    let s = `<defs><clipPath id="cabclip${seq}"><ellipse cx="60" cy="62" rx="34" ry="30"/></clipPath>` +
+      `<radialGradient id="stg${seq}"><stop offset="0" stop-color="${blue}" stop-opacity=".85"/><stop offset="1" stop-color="${blue}" stop-opacity="0"/></radialGradient></defs>` +
+      `<g clip-path="url(#cabclip${seq})">`;
+    for (let i = 0; i < 5; i++) {   // 風暴雲團：幾團電光藍的柔光墊底，讓整顆像是烏雲裡透出電光
+      s += `<circle cx="${_r1(32 + rng() * 52)}" cy="${_r1(36 + rng() * 48)}" r="${_r1(13 + rng() * 11)}" fill="url(#stg${seq})" opacity="${(0.5 + rng() * 0.35).toFixed(2)}"/>`;
+    }
+    for (let arm = 0; arm < 3; arm++) {
+      const base = arm * (Math.PI * 2 / 3) + rng() * 0.4;
+      let prev = null;
+      for (let k = 0; k <= 26; k++) {
+        const t = k / 26, th = base + t * Math.PI * 2.6, r = 4 + t * 38;
+        const p = [cx0 + Math.cos(th) * r * 1.12, cy0 + Math.sin(th) * r * 0.92];
+        if (prev && rng() > 0.16) {   // 隨機漏掉幾段，看起來像被扯碎的纖維
+          s += `<line x1="${_r1(prev[0])}" y1="${_r1(prev[1])}" x2="${_r1(p[0])}" y2="${_r1(p[1])}" stroke="${[pale, blue, pale, gold][(k + arm) % 4]}" ` +
+            `stroke-width="${(1.1 + t * 3.2 * (0.5 + rng() * 0.7)).toFixed(2)}" stroke-linecap="round" opacity="${(0.6 + rng() * 0.38).toFixed(2)}"/>`;
+        }
+        prev = p;
+      }
+    }
+    for (let i = 0; i < 18; i++) {   // 碎裂的金色／墨色纖維
+      const a = rng() * Math.PI * 2, r = 6 + rng() * 32, tang = a + Math.PI / 2 + (rng() - 0.5) * 0.9, len = 3 + rng() * 8;
+      const x = cx0 + Math.cos(a) * r * 1.12, y = cy0 + Math.sin(a) * r * 0.92;
+      s += `<line x1="${_r1(x)}" y1="${_r1(y)}" x2="${_r1(x + Math.cos(tang) * len)}" y2="${_r1(y + Math.sin(tang) * len)}" ` +
+        `stroke="${i % 3 === 0 ? ink : i % 3 === 1 ? gold : pale}" stroke-width="${(0.7 + rng() * 1.2).toFixed(2)}" stroke-linecap="round" opacity=".85"/>`;
+    }
+    // 閃電：從右上劈向風暴眼
+    s += `<polyline points="92,38 80,46 85,50 72,56 76,59 64,64" fill="none" stroke="${gold}" stroke-width="1.2" stroke-linejoin="miter" opacity=".9"/>` +
+      `<polyline points="92,38 80,46 85,50 72,56 76,59 64,64" fill="none" stroke="#fff3c4" stroke-width=".45" opacity=".9"/>`;
+    return s + `</g>`;
+  },
+  /* 水草瑪瑙：透明玉髓裡長出綠色樹枝狀（蕨葉般）內含物。texCol = [枝色, 枝色2] */
+  moss(rng, c, seq) {
+    const cols = c.texCol || ["#4f8a52", "#2f6a3e"];
+    let s = `<defs><clipPath id="cabclip${seq}"><ellipse cx="60" cy="62" rx="34" ry="30"/></clipPath></defs><g clip-path="url(#cabclip${seq})">`;
+    for (let k = 0; k < 8; k++) {
+      const x = 28 + rng() * 64, y = 40 + rng() * 48, a0 = -Math.PI / 2 + (rng() - 0.5) * 1.2, len = 11 + rng() * 15;
+      const x1 = x + Math.cos(a0) * len, y1 = y + Math.sin(a0) * len, col = cols[k % cols.length];
+      s += `<line x1="${_r1(x)}" y1="${_r1(y)}" x2="${_r1(x1)}" y2="${_r1(y1)}" stroke="${col}" stroke-width="1.1" stroke-linecap="round" opacity=".9"/>`;
+      for (let b = 1; b <= 4; b++) {
+        const t = b / 5, bx = x + (x1 - x) * t, by = y + (y1 - y) * t, bl = len * 0.45 * (1 - t * 0.6);
+        for (const sd of [-1, 1]) {
+          const a = a0 + sd * (0.7 + rng() * 0.4);
+          s += `<line x1="${_r1(bx)}" y1="${_r1(by)}" x2="${_r1(bx + Math.cos(a) * bl)}" y2="${_r1(by + Math.sin(a) * bl)}" stroke="${col}" stroke-width=".7" stroke-linecap="round" opacity=".85"/>`;
+        }
+      }
+    }
+    return s + `</g>`;
+  },
+  /* 海洋碧玉：同心圓球狀（orbicular）結構。texCol = 由外到內的環色 */
+  orb(rng, c, seq) {
+    const cols = c.texCol || ["#e9e2cf", "#5f7f66", "#2f4a3c", "#d9b8a0"];
+    let s = `<defs><clipPath id="cabclip${seq}"><ellipse cx="60" cy="62" rx="34" ry="30"/></clipPath></defs><g clip-path="url(#cabclip${seq})">`;
+    for (let k = 0; k < 10; k++) {
+      const x = 28 + rng() * 64, y = 36 + rng() * 52, r = 5 + rng() * 6;
+      cols.forEach((col, i) => {
+        s += `<circle cx="${_r1(x)}" cy="${_r1(y)}" r="${_r1(r * (1 - i / cols.length))}" fill="${col}" opacity=".85" stroke="${INK}" stroke-width=".25" stroke-opacity=".4"/>`;
+      });
+    }
+    return s + `</g>`;
+  },
+};
+
+/* 滾石（TUMBLED）的光澤與內含物：回傳 SVG；形狀與 tumbled 本體同一條路徑，才裁得剛好 */
+const TUMBLED_SHAPE = "M 26 62 C 26 38, 44 28, 62 29 C 84 30, 95 44, 94 63 C 93 82, 78 93, 58 92 C 38 91, 26 80, 26 62 Z";
+const TUMBLED_TEX = {
+  /* 金／銀／彩虹光澤：三團斜向、邊緣柔化的光暈（像光在玻璃裡被拉扁的氣泡層上流動）。
+     texCol 兩色＝單色光澤；三色以上＝彩虹。柔邊用「放射漸層遮罩」做，不靠 blur filter，手機上才不吃效能。 */
+  sheen(rng, c, seq) {
+    const cols = c.texCol || ["#f4d58a", "#c9962f"];
+    const rainbow = cols.length > 2;
+    let defs = "", rib = "";
+    [[46, -27, 42, 12], [62, -27, 46, 9], [77, -30, 38, 10]].forEach(([y, rot, rx, ry], i) => {
+      const cx = _r1(60 + (rng() - 0.5) * 8), lg = `shn${seq}_${i}`, rg = `shr${seq}_${i}`, mk = `shk${seq}_${i}`;
+      const stops = rainbow
+        ? cols.map((col, j) => `<stop offset="${_r1(j / (cols.length - 1))}" stop-color="${col}"/>`).join("")
+        : `<stop offset="0" stop-color="${cols[0]}"/><stop offset="1" stop-color="${cols[1]}"/>`;
+      const shape = `<ellipse cx="${cx}" cy="${y}" rx="${rx}" ry="${ry}" transform="rotate(${rot} 60 ${y})"`;
+      defs += `<linearGradient id="${lg}" x1="0" x2="1" y1="0" y2="0">${stops}</linearGradient>` +
+        `<radialGradient id="${rg}"><stop offset="0" stop-color="#fff" stop-opacity="1"/><stop offset=".55" stop-color="#fff" stop-opacity=".5"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>` +
+        `<mask id="${mk}" maskUnits="userSpaceOnUse" x="0" y="0" width="120" height="120">${shape} fill="url(#${rg})"/></mask>`;
+      rib += `<g mask="url(#${mk})">${shape} fill="url(#${lg})"/></g>`;
+    });
+    rib += `<path d="M34 71 Q58 51 90 45" fill="none" stroke="${cols[0]}" stroke-width=".8" stroke-linecap="round" opacity=".75"/>`;   // 最亮的一絲
+    return `<defs><clipPath id="tmbclip${seq}"><path d="${TUMBLED_SHAPE}"/></clipPath>${defs}</defs><g clip-path="url(#tmbclip${seq})">${rib}</g>`;
+  },
+  /* 血滴：細小的紅褐色薄片散在石裡，外加幾點閃光。texCol = 薄片色 */
+  flecks(rng, c, seq) {
+    const cols = c.texCol || ["#c23a2c", "#e0654a"];
+    let s = `<defs><clipPath id="tmbclip${seq}"><path d="${TUMBLED_SHAPE}"/></clipPath></defs><g clip-path="url(#tmbclip${seq})">`;
+    for (let i = 0; i < 46; i++) {
+      const a = rng() * Math.PI * 2, r = Math.sqrt(rng()) * 27;
+      const x = 60 + Math.cos(a) * r * 1.2, y = 60 + Math.sin(a) * r * 0.8;
+      s += `<ellipse cx="${_r1(x)}" cy="${_r1(y)}" rx="${(1.4 + rng() * 2.2).toFixed(1)}" ry="${(0.7 + rng() * 1.1).toFixed(1)}" fill="${cols[i % cols.length]}" ` +
+        `opacity=".9" transform="rotate(${_r1(rng() * 180)} ${_r1(x)} ${_r1(y)})"/>`;
+    }
+    for (let i = 0; i < 6; i++) {
+      s += `<circle cx="${_r1(40 + rng() * 40)}" cy="${_r1(42 + rng() * 34)}" r="${(0.6 + rng() * 0.6).toFixed(1)}" fill="#fff" opacity=".8"/>`;
+    }
+    return s + `</g>`;
+  },
+  /* 雪花：白色放射狀的方矽石斑塊。texCol = [雪色] */
+  snow(rng, c, seq) {
+    const col = (c.texCol || ["#f4f4f1"])[0];
+    let s = `<defs><clipPath id="tmbclip${seq}"><path d="${TUMBLED_SHAPE}"/></clipPath></defs><g clip-path="url(#tmbclip${seq})">`;
+    for (let i = 0; i < 8; i++) {
+      const x = 36 + rng() * 48, y = 40 + rng() * 40, r = 2.6 + rng() * 2.6;
+      s += `<circle cx="${_r1(x)}" cy="${_r1(y)}" r="${_r1(r)}" fill="${col}" opacity=".88"/>`;
+      for (let k = 0; k < 8; k++) {
+        const a = (k / 8) * Math.PI * 2 + rng() * 0.3, l = r + 2 + rng() * 3;
+        s += `<line x1="${_r1(x)}" y1="${_r1(y)}" x2="${_r1(x + Math.cos(a) * l)}" y2="${_r1(y + Math.sin(a) * l)}" stroke="${col}" stroke-width=".6" stroke-linecap="round" opacity=".8"/>`;
+      }
+    }
+    return s + `</g>`;
+  },
+};
+
 const CRYSTAL_FORMS = {
-  point(pal, rng) {
-    return _matrix(rng) + _pointAt(60, 101, 66, 30, pal, (rng() - 0.5) * 8) +
-      _pointAt(41, 101, 30, 15, pal, -16 - rng() * 6) + _pointAt(80, 101, 26, 13, pal, 15 + rng() * 6);
+  point(pal, rng, c = {}) {
+    return _matrix(rng) + _pointAt(60, 101, 66, 30, pal, (rng() - 0.5) * 8, 0, rng, _pointInc(c)) +
+      _pointAt(41, 101, 30, 15, pal, -16 - rng() * 6, 0, rng, _pointInc(c, "1")) +
+      _pointAt(80, 101, 26, 13, pal, 15 + rng() * 6, 0, rng, _pointInc(c, "2"));
   },
   cluster(pal, rng) {
     let s = _matrix(rng, 100, 78);
@@ -88,21 +343,45 @@ const CRYSTAL_FORMS = {
       ${inner}
       <path d="M ${cx - R} ${cy} L ${cx + R} ${cy}" stroke="${INK}" stroke-width="1"/>`;
   },
-  tumbled(pal, rng) {
+  tumbled(pal, rng, c = {}) {
     let speck = "";
     for (let i = 0; i < 16; i++) {
       const a = rng() * Math.PI * 2, r = rng() * 26;
       speck += `<circle cx="${60 + Math.cos(a) * r * 1.15}" cy="${62 + Math.sin(a) * r * 0.78}" r="${0.7 + rng() * 1.4}" fill="${i % 3 ? pal[1] : pal[2]}" opacity=".8"/>`;
     }
+    const tex = c.tex && TUMBLED_TEX[c.tex] ? TUMBLED_TEX[c.tex](crystalRng(c.id + "|tex"), c, _svgSeq) : "";
     return `<ellipse cx="60" cy="97" rx="38" ry="4.5" fill="${INK}" opacity=".14"/>
-      <path d="M 26 62 C 26 38, 44 28, 62 29 C 84 30, 95 44, 94 63 C 93 82, 78 93, 58 92 C 38 91, 26 80, 26 62 Z"
+      <path d="${TUMBLED_SHAPE}"
         fill="${pal[0]}" stroke="${INK}" stroke-width="1.3"/>
-      ${speck}
+      ${speck}${tex}
       <path d="M 36 48 C 42 38, 54 34, 64 35" fill="none" stroke="${pal[2]}" stroke-width="3.5" stroke-linecap="round" opacity=".7"/>`;
   },
-  cab(pal, rng) {
+  /* 珍珠這類正圓的東西 */
+  sphere(pal, rng) {
+    return `<ellipse cx="60" cy="98" rx="30" ry="4" fill="${INK}" opacity=".14"/>
+      <circle cx="60" cy="60" r="34" fill="${pal[0]}" stroke="${INK}" stroke-width="1.3"/>
+      <circle cx="60" cy="60" r="34" fill="url(#sphgrad${_svgSeq})"/>
+      <ellipse cx="47" cy="45" rx="10" ry="6" fill="${pal[2]}" opacity=".85" transform="rotate(-32 47 45)"/>
+      <path d="M 40 76 C 52 88, 72 87, 82 74" fill="none" stroke="${pal[1]}" stroke-width="2.6" stroke-linecap="round" opacity=".4"/>
+      <defs><radialGradient id="sphgrad${_svgSeq}" cx="36%" cy="30%" r="80%">
+        <stop offset="0%" stop-color="${pal[2]}" stop-opacity=".8"/><stop offset="55%" stop-color="${pal[0]}" stop-opacity="0"/>
+        <stop offset="100%" stop-color="${pal[1]}" stop-opacity=".55"/></radialGradient></defs>`;
+  },
+  /* 六方柱＋平頂（祖母綠這類綠柱石的外形） */
+  prism(pal, rng) {
+    const cx = 60, top = 28, bot = 100, w = 34, l = cx - w / 6, r = cx + w / 6, L = cx - w / 2, R = cx + w / 2;
+    return `<ellipse cx="60" cy="102" rx="30" ry="4" fill="${INK}" opacity=".14"/>
+      ${_poly([[L, top + 4], [l, top + 8], [l, bot], [L, bot - 4]], pal[1], `stroke="${INK}" stroke-width=".8"`)}
+      ${_poly([[l, top + 8], [r, top + 8], [r, bot], [l, bot]], pal[0], `stroke="${INK}" stroke-width=".8"`)}
+      ${_poly([[r, top + 8], [R, top + 4], [R, bot - 4], [r, bot]], pal[2], `stroke="${INK}" stroke-width=".8"`)}
+      ${_poly([[L, top + 4], [cx - 6, top - 3], [cx + 6, top - 3], [R, top + 4], [r, top + 8], [l, top + 8]], pal[2], `stroke="${INK}" stroke-width=".8" opacity=".95"`)}
+      ${[0.3, 0.55, 0.8].map(q => `<line x1="${l + 1}" y1="${top + 8 + (bot - top - 8) * q}" x2="${r - 1}" y2="${top + 8 + (bot - top - 8) * q}" stroke="${INK}" stroke-width=".4" opacity=".35"/>`).join("")}`;
+  },
+  cab(pal, rng, c = {}) {
+    const tex = c.tex && CAB_TEX[c.tex] ? CAB_TEX[c.tex](crystalRng(c.id + "|tex"), c, _svgSeq) : "";
     return `<ellipse cx="60" cy="96" rx="36" ry="4.5" fill="${INK}" opacity=".14"/>
       <ellipse cx="60" cy="62" rx="34" ry="30" fill="${pal[0]}" stroke="${INK}" stroke-width="1.3"/>
+      ${tex}
       <ellipse cx="60" cy="62" rx="34" ry="30" fill="url(#cabgrad${_svgSeq})"/>
       <path d="M 34 55 C 44 40, 70 36, 84 48" fill="none" stroke="${pal[2]}" stroke-width="4.5" stroke-linecap="round" opacity=".85"/>
       <path d="M 40 74 C 52 82, 72 80, 80 70" fill="none" stroke="${pal[1]}" stroke-width="3" stroke-linecap="round" opacity=".5"/>
@@ -164,12 +443,23 @@ const CRYSTAL_FORMS = {
   },
 };
 
-/* 產生一張復古插圖 SVG（含斜線陰影 overlay） */
-function crystalSVG(c, cls = "") {
+/* 品種（variants）只覆蓋「長相」：配色與紋理；形狀、亂數種子都沿用本尊，換色時石頭不會變形 */
+function crystalLook(c, variant) {
+  if (!variant) return c;
+  const look = { ...c };
+  for (const k of ["pal", "tex", "texCol", "texCol2", "eye"]) if (variant[k] !== undefined) look[k] = variant[k];
+  if (variant.texCol2 === undefined) delete look.texCol2;   // 本尊的雙色設定不外洩到其他品種
+  return look;
+}
+
+/* 產生一張復古插圖 SVG（含斜線陰影 overlay）；variant 為 c.variants 裡的一筆時，改用該品種的配色 */
+function crystalSVG(c, cls = "", variant = null) {
+  const look = crystalLook(c, variant);
   const rng = crystalRng(c.id);
   const seq = ++_svgSeq;
-  const body = (CRYSTAL_FORMS[c.form] || CRYSTAL_FORMS.tumbled)(c.pal, rng);
-  return `<svg class="${cls}" viewBox="0 0 120 120" role="img" aria-label="${esc(c.zh)}插圖" stroke-linejoin="round">
+  const body = (CRYSTAL_FORMS[look.form] || CRYSTAL_FORMS.tumbled)(look.pal, rng, look);
+  const label = variant ? `${c.zh}（${variant.name}）` : c.zh;
+  return `<svg class="${cls}" viewBox="0 0 120 120" role="img" aria-label="${esc(label)}插圖" stroke-linejoin="round">
     <defs><pattern id="hatch${seq}" width="4" height="4" patternTransform="rotate(38)" patternUnits="userSpaceOnUse">
       <line x1="0" y1="0" x2="0" y2="4" stroke="${INK}" stroke-width=".55"/></pattern></defs>
     ${body}
@@ -376,7 +666,9 @@ function filteredCrystals() {
     if (moon === "new" && c.nm < 2) return false;
     if (moon === "full" && c.fm < 2) return false;
     if (q) {
-      const hay = [c.zh, c.en, c.alias, c.family, ...c.fx, ...(c.common || []), ...c.uses].join(" ").toLowerCase();
+      /* 品種名（例：鷹眼石、錦鯉膠花、白兔毛）也要搜得到 */
+      const hay = [c.zh, c.en, c.alias, c.family, ...c.fx, ...(c.common || []), ...c.uses,
+        ...(c.variants || []).flatMap(v => [v.name, v.en || ""])].join(" ").toLowerCase();
       if (!hay.includes(q.toLowerCase())) return false;
     }
     return true;
@@ -477,6 +769,11 @@ function openCrystalDetail(cid) {
     <div class="socratic">${c.fx.map(f => `✦ ${esc(f)}`).join("<br>")}</div>
     ${c.common?.length ? `<p class="small"><b>🌟 最常見的功效</b></p>
       <div class="fx-tags">${c.common.map(f => `<span class="fx-tag">${esc(f)}</span>`).join("")}</div>` : ""}
+    ${c.variants?.length ? `<p class="small"><b>🎨 顏色・品種</b> <span class="muted">點一下，上方插圖會換成那一種</span></p>
+      <div class="var-chips">${c.variants.map((v, i) => `
+        <button type="button" class="chip var-chip ${i === 0 ? "on" : ""}" data-vi="${i}">
+          <i class="var-dot" style="background:${esc(v.sw || "#999")}"></i>${esc(v.name)}</button>`).join("")}</div>
+      <div class="var-note" id="cd-var-note"></div>` : ""}
     <p class="small"><b>🏷 用途</b>：${c.uses.map(u => `${CRYSTAL_USES[u]} ${u}`).join("・")}</p>
     ${moonTags ? `<p class="small"><b>🌙 月相搭配</b>：${moonTags}<br><span class="muted">${esc(c.moonNote)}</span></p>` : `<p class="small muted">${esc(c.moonNote)}</p>`}
     <p class="small"><b>🕊 淨化</b>：${c.cleanse.map(esc).join("・")}</p>
@@ -490,6 +787,17 @@ function openCrystalDetail(cid) {
     </div>`);
   $("#cd-close", m).addEventListener("click", () => m.remove());
   $("#cd-collect", m).addEventListener("click", () => { m.remove(); openCollectForm({ crystalId: cid }); });
+  /* 品種切換：換插圖配色＋換說明；預設選第一個 */
+  if (c.variants?.length) {
+    const showVariant = i => {
+      const v = c.variants[i];
+      $(".cd-fig", m).innerHTML = crystalSVG(c, "", v);
+      $$(".var-chip", m).forEach(b => b.classList.toggle("on", +b.dataset.vi === i));
+      $("#cd-var-note", m).innerHTML = `<b>${esc(v.name)}</b>${v.en ? ` <span class="cd-en">${esc(v.en)}</span>` : ""}<br>${esc(v.note || "")}`;
+    };
+    $$(".var-chip", m).forEach(b => b.addEventListener("click", () => showVariant(+b.dataset.vi)));
+    showVariant(0);
+  }
 }
 
 /* ============================================================

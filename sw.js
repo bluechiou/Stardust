@@ -2,7 +2,7 @@
 /* 版本號要和 app.js 的 APP_VERSION 一起往上加。
    改了這個字串，瀏覽器就會判定 sw.js 有變、安裝新的 SW，
    前端的 controllerchange 才會跳出「有新版本」橫幅。 */
-const CACHE = "dreamtide-v27-2026.10.14.2";
+const CACHE = "dreamtide-v28-2026.10.15";
 /* 核心殼層：一定要進快取才算安裝成功 */
 const CORE = ["./", "index.html", "style.css", "copy.js", "app.js", "crystal-data.js", "crystals.js", "cloud.js", "account.js", "manifest.webmanifest"];
 /* 加分資產：抓不到也不該讓整個 SW 安裝失敗（失敗 → 沒有 SW → PWA 就不能安裝了）。
