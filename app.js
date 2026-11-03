@@ -4,7 +4,7 @@
 
 /* 版本號：每次要讓使用者看到新東西時，這裡和 sw.js 的 CACHE 一起往上加。
    設定分頁會顯示這個號碼，回報問題時報這個數字最快能判斷對方在哪一版。 */
-const APP_VERSION = "2026.10.15";
+const APP_VERSION = "2026.11.03";
 
 /* ---------- 小工具 ---------- */
 const $ = (sel, el = document) => el.querySelector(sel);
@@ -4587,7 +4587,7 @@ function finishFocus(completed) {
 }
 
 /* ---🪽 時空膠囊 🐚 --- */
-/* 扭蛋球道：每顆時空膠囊是一顆小扭蛋，一顆顆放進像保齡球道的收藏架。
+/* 星軌：每顆時空膠囊是一顆小行星，沿著深空星軌排列。
    一條球道放 CAP_PER_LANE 顆，放滿換下一條（像並排的球道）；新封存的一顆會從球道左端滾進它的位置。
    狀態：sealed 封存中（鎖頭＋倒數天數）／ready 到期可開（發光）／opened 已開啟（蓋子掀開）。 */
 const CAP_PER_LANE = 6;
