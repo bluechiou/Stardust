@@ -4,7 +4,7 @@
 
 /* 版本號：每次要讓使用者看到新東西時，這裡和 sw.js 的 CACHE 一起往上加。
    設定分頁會顯示這個號碼，回報問題時報這個數字最快能判斷對方在哪一版。 */
-const APP_VERSION = "2026.11.03.1";
+const APP_VERSION = "2026.11.03.2";
 
 /* ---------- 小工具 ---------- */
 const $ = (sel, el = document) => el.querySelector(sel);
@@ -969,6 +969,19 @@ function allUpcomingEvents(days = 120) {
       舊寫法整個停掉；使用者再按一次錄音，索引從 0 重來，接著又把同樣的內容寫回去。
       → 改成 onend 時先把這一輪的文字「封存」進 base，再自動開下一輪，
         索引歸零也蓋不掉先前的內容，講多久都不會重複。 */
+/* 3) Android Chrome 另一個行為：後一段 final 常是「前一段＋新字」的累加版本
+      （「今天」「今天天氣」「今天天氣很好」全都標 isFinal），直接串接就會變成三份。
+      → mergeSpeech 逐段合併：新段落以舊文字開頭就整段取代；舊文字已含新段落就略過；否則才接在後面。
+   4) 換輪（onend → 重開）時，引擎偶爾會把上一輪尾端又重新辨識一次；封存前也用同一套規則去重。
+   5) 每個 rec 只認自己的事件：舊實例遲到的 onresult／onend 不得改動新一輪的狀態。 */
+function mergeSpeech(acc, add) {
+  if (!add) return acc;
+  if (!acc) return add;
+  if (add.length > acc.length && add.startsWith(acc)) return add;   // 累加版本：取代
+  if (add.length >= 4 && acc.endsWith(add)) return acc;   // 尾端重複：略過（短詞如「對對對」可能是真的重複，不吃）
+  return acc + add;
+}
+const mergeSpeechParts = parts => parts.reduce((acc, p) => mergeSpeech(acc, p), "");
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 function attachMic(btn, textarea, { onFinal } = {}) {
   if (!SR) {
@@ -978,6 +991,7 @@ function attachMic(btn, textarea, { onFinal } = {}) {
   let rec = null, listening = false, stopping = false;
   let base = "";        // 已封存的文字（先前輪次＋使用者原本打的字）
   let finals = [];      // 這一輪各索引的定案文字，索引即 key
+  let interimNow = "";  // 這一輪最後看到的暫定文字（onend 時若沒被定案，也要保住，不能悄悄吃掉）
   let emptyRounds = 0;  // 連續空轉次數，用來擋住麥克風權限被拒時的無限重開
 
   const finish = () => {
@@ -986,12 +1000,20 @@ function attachMic(btn, textarea, { onFinal } = {}) {
     textarea.value = base;
     if (onFinal) onFinal(textarea.value);
   };
+  const roundText = () => mergeSpeechParts([...finals.filter(Boolean), interimNow]);
+  // base 結尾若已是同一段（換輪重辨識），不再接第二次
+  const sealRound = () => {
+    const t = roundText();
+    if (t && !(t.length >= 4 && base.trimEnd().endsWith(t))) base += t;
+    finals = []; interimNow = "";
+  };
 
   const startRound = () => {
-    rec = new SR();
-    rec.lang = "zh-TW"; rec.continuous = true; rec.interimResults = true; rec.maxAlternatives = 1;
-    finals = [];
-    rec.onresult = ev => {
+    const me = rec = new SR();
+    me.lang = "zh-TW"; me.continuous = true; me.interimResults = true; me.maxAlternatives = 1;
+    finals = []; interimNow = "";
+    me.onresult = ev => {
+      if (me !== rec) return;
       emptyRounds = 0;
       let interim = "";
       for (let i = ev.resultIndex; i < ev.results.length; i++) {
@@ -999,24 +1021,26 @@ function attachMic(btn, textarea, { onFinal } = {}) {
         if (r.isFinal) finals[i] = r[0].transcript;   // 覆蓋而非累加：重送同一段也只留一份
         else interim += r[0].transcript;
       }
-      textarea.value = base + finals.join("") + interim;
+      interimNow = interim;
+      textarea.value = base + roundText();
     };
-    rec.onerror = e => {
+    me.onerror = e => {
+      if (me !== rec) return;
       // no-speech／aborted 是正常結束；權限被拒才要真的停下來
       if (e.error === "not-allowed" || e.error === "service-not-allowed") {
         stopping = true;
         toast("需要麥克風權限才能語音輸入，請在瀏覽器設定中允許");
       }
     };
-    rec.onend = () => {
-      base += finals.join("");        // 封存這一輪，下一輪索引歸零也不會覆蓋
-      finals = [];
+    me.onend = () => {
+      if (me !== rec) return;
+      sealRound();                    // 封存這一輪，下一輪索引歸零也不會覆蓋
       if (!stopping && ++emptyRounds < 8) {
         try { startRound(); return; } catch { /* 開不起來就收工 */ }
       }
       finish();
     };
-    rec.start();
+    me.start();
   };
 
   btn.addEventListener("click", () => {
@@ -1670,8 +1694,8 @@ function startCosmos(cv) {
 const NAV_TABS = [
   { key: "today",    icon: "🏠", label: "首頁", fixed: true },
   { key: "dream",    icon: "🌙", label: "夢境" },
-  { key: "cbt",      icon: "🧠", label: "思考" },
   { key: "moon",     icon: "📅", label: "月曆" },
+  { key: "cbt",      icon: "🧠", label: "思考" },
   { key: "crystal",  icon: "💎", label: "水晶" },
   { key: "cosmos",   icon: "🌌", label: "宇宙" },
   { key: "more",     icon: "🔮", label: "召喚寶庫" },   // 2026-10-15 起「召喚」與「寶庫」合併為這一個分頁

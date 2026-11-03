@@ -24,6 +24,7 @@
   --cal-newmoon:  #9fb6cd;  /* 新月・朔夜銀藍 */
   --cal-fullmoon: #e8c874;  /* 滿月・月亮金 */
   --radius: 16px;
+  --btn-from: color-mix(in srgb, var(--accent) 55%, var(--accent-deep));   /* 主按鈕漸層起點：白字對比 ≥ 4.5:1 */
   --nav-h: 62px;
 }
 @media (prefers-color-scheme: light) {
@@ -48,6 +49,7 @@
 
 /* 主題：暮色 Dusk（杏橘 × 靛紫 × 深夜藍） */
 :root[data-theme="dusk"] {
+  --btn-from: var(--accent);   /* 暮色主題按鈕用深色字，不需要壓暗 */
   color-scheme: dark;
   --bg: #1e1b36;
   --surface: #292643;
@@ -192,8 +194,8 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
     radial-gradient(1px 1px at 38% 74%, rgba(255,255,255,.6) 50%, transparent 52%),
     radial-gradient(1.2px 1.2px at 71% 26%, rgba(255,255,255,.75) 50%, transparent 52%),
     radial-gradient(1px 1px at 90% 68%, rgba(255,255,255,.55) 50%, transparent 52%),
-    radial-gradient(ellipse at 85% -20%, rgba(255,255,255,.28), transparent 60%),
-    linear-gradient(135deg, var(--accent), var(--accent-deep));
+    radial-gradient(ellipse at 85% -20%, rgba(255,255,255,.12), transparent 60%),
+    linear-gradient(135deg, var(--btn-from), var(--accent-deep));
   color: var(--accent-ink);
   padding: 11px 18px; border-radius: 14px; font-size: .95rem; font-weight: 600;
   width: 100%;
