@@ -461,67 +461,86 @@ nav.tabbar::after {
   .event-row.today { animation: none; border-color: rgba(232,200,116,.9); }
 }
 
-/* ⏳ 時空膠囊：扭蛋＋保齡球道收藏架
-   每顆膠囊是一顆小扭蛋（上蓋＋下殼＋接縫），一顆顆放進像保齡球道的木紋收藏架：
-   上下各一條球道溝、中間一排球道箭頭。一條球道放 6 顆（app.js 的 CAP_PER_LANE），放滿換下一條。
-   新封存的一顆會從球道左端滾進它的位置（.rollin；--i 是它在這條球道的第幾格）。
-   用 grid 欄寬當「一格」：translateX 的 -100% 剛好等於一格寬，不用量像素。 */
+/* ⏳ 時空膠囊：星軌＋行星收藏架（宇宙風）
+   每顆膠囊是一顆小行星（球體＋傾斜星環），沿著深空中的星軌排列。
+   一條星軌放 6 顆（app.js 的 CAP_PER_LANE），放滿換下一條。
+   狀態：sealed 封存＝暗色星球＋星環；ready 到期＝金色恆星脈動；opened 已開啟＝空心星環（內容已釋放）。
+   新封存的一顆會從星軌左端滑進它的位置（.rollin；--i 是它在這條星軌的第幾格）。
+   用 grid 欄寬當「一格」：translateX 的 -100% 剛好等於一格寬，不用量像素。
+   星軌固定是深空配色，四個主題下都一樣（宇宙本來就是暗的）。 */
 .cap-sum { margin: 4px 0 2px; }
 .cap-shelf { display: flex; flex-direction: column; gap: 8px; margin: 8px 0 6px; }
 .cap-lane {
-  --d: 40px;
+  --d: 38px;
   position: relative; overflow: hidden;
   display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); align-items: end; justify-items: center;
-  padding: 16px 6px 6px; border-radius: 10px;
+  padding: 18px 6px 8px; border-radius: 14px;
   background:
-    repeating-linear-gradient(90deg, rgba(60, 30, 8, .07) 0 1px, transparent 1px 7px),
-    linear-gradient(180deg, #e0bd86 0%, #cfa46a 50%, #bd8d56 100%);
-  box-shadow:
-    inset 0 6px 0 -2px #2b1d12, inset 0 -6px 0 -2px #2b1d12,
-    inset 0 9px 10px -4px rgba(0, 0, 0, .35), inset 0 -9px 10px -4px rgba(0, 0, 0, .35),
-    0 3px 8px rgba(0, 0, 0, .28);
+    radial-gradient(1.2px 1.2px at 12% 24%, rgba(255, 255, 255, .85) 50%, transparent 52%),
+    radial-gradient(1px 1px at 31% 70%, rgba(255, 255, 255, .6) 50%, transparent 52%),
+    radial-gradient(1.4px 1.4px at 47% 18%, rgba(232, 200, 116, .9) 50%, transparent 52%),
+    radial-gradient(1px 1px at 63% 78%, rgba(255, 255, 255, .55) 50%, transparent 52%),
+    radial-gradient(1.2px 1.2px at 78% 30%, rgba(255, 255, 255, .8) 50%, transparent 52%),
+    radial-gradient(1px 1px at 91% 66%, rgba(180, 200, 255, .7) 50%, transparent 52%),
+    radial-gradient(ellipse at 15% 0%, rgba(139, 127, 240, .28), transparent 60%),
+    radial-gradient(ellipse at 90% 110%, rgba(78, 201, 176, .16), transparent 55%),
+    linear-gradient(180deg, #0b0a1c 0%, #15123a 100%);
+  border: 1px solid rgba(139, 127, 240, .28);
+  box-shadow: inset 0 0 22px rgba(0, 0, 0, .55), 0 0 14px rgba(139, 127, 240, .12);
 }
+/* 星軌：穿過每顆星球的一條細光線，兩端淡出 */
 .cap-lane::before {
-  content: "▸ ▸ ▸ ▸ ▸ ▸ ▸"; position: absolute; left: 8px; right: 8px; top: 50%; transform: translateY(-60%);
-  font-size: .8rem; letter-spacing: .5em; text-align: center; white-space: nowrap;
-  color: rgba(70, 40, 15, .22); pointer-events: none;
+  content: ""; position: absolute; left: 0; right: 0; top: calc(18px + var(--d) / 2); height: 1px;
+  background: linear-gradient(90deg, transparent 0%, rgba(184, 170, 255, .5) 18%, rgba(232, 200, 116, .45) 50%, rgba(184, 170, 255, .5) 82%, transparent 100%);
+  pointer-events: none;
 }
 .cap-lane.empty { display: block; padding: 22px 12px; text-align: center; }
 .cap-lane.empty::before { display: none; }
-.cap-empty { position: relative; margin: 0; font-size: .8rem; color: rgba(60, 35, 12, .78); }
+.cap-empty { position: relative; margin: 0; font-size: .8rem; color: rgba(200, 196, 240, .8); }
 .cap-slot {
   position: relative; z-index: 1; width: 100%; padding: 2px 0 0;
-  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
   background: none; border: 0; cursor: pointer; font-family: inherit; -webkit-tap-highlight-color: transparent;
 }
 .cap-lbl {
   font-size: .62rem; font-weight: 600; line-height: 1; letter-spacing: .02em; white-space: nowrap;
-  color: rgba(45, 25, 8, .88); background: rgba(255, 246, 228, .6); border-radius: 6px; padding: 2px 5px;
+  color: #d9d4ff; background: rgba(139, 127, 240, .16); border: 1px solid rgba(139, 127, 240, .3);
+  border-radius: 999px; padding: 3px 6px;
 }
-.cap-ball { position: relative; display: block; width: var(--d); height: var(--d); filter: drop-shadow(0 4px 3px rgba(40, 20, 5, .45)); }
-.cap-top, .cap-bot { position: absolute; left: 0; right: 0; height: 50%; }
-.cap-top {
-  top: 0; border-radius: 999px 999px 0 0; transform-origin: 14% 100%; transition: transform .35s ease;
-  background:
-    radial-gradient(circle at 30% 42%, rgba(255, 255, 255, .9) 0 9%, transparent 10%),
-    linear-gradient(160deg, color-mix(in srgb, var(--c1) 78%, #fff) 0%, var(--c1) 55%, color-mix(in srgb, var(--c1) 74%, #000) 100%);
-}
+/* 星球：用球體光影＋ --c1/--c2 兩色做成各自不同的行星 */
+.cap-ball { position: relative; display: block; width: var(--d); height: var(--d); }
 .cap-bot {
-  bottom: 0; border-radius: 0 0 999px 999px;
-  background: linear-gradient(200deg, #fff 0%, var(--c2) 45%, color-mix(in srgb, var(--c2) 78%, #000) 100%);
+  position: absolute; inset: 17%; border-radius: 50%;
+  background:
+    radial-gradient(circle at 32% 28%, #fff 0, var(--c2) 14%, var(--c1) 52%, color-mix(in srgb, var(--c1) 35%, #07061a) 100%);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--c1) 55%, transparent), inset -4px -4px 8px rgba(5, 4, 20, .55);
+  filter: saturate(.8) brightness(.82);
 }
-.cap-ball::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 2px; margin-top: -1px; background: rgba(0, 0, 0, .22); }
-.cap-st { position: absolute; right: -5px; bottom: -4px; font-style: normal; font-size: .72rem; line-height: 1; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .55)); }
-/* 到期可開：金色呼吸光暈；已開啟：上蓋掀開、色彩淡一點 */
-.cap-slot[data-st="ready"] .cap-ball { animation: cap-glow 1.8s ease-in-out infinite; }
-@keyframes cap-glow {
-  0%, 100% { filter: drop-shadow(0 4px 3px rgba(40, 20, 5, .45)) drop-shadow(0 0 0 rgba(255, 214, 102, 0)); }
-  50%      { filter: drop-shadow(0 4px 3px rgba(40, 20, 5, .45)) drop-shadow(0 0 9px rgba(255, 214, 102, .95)); }
+/* 星環：傾斜的橢圓，繞過球體；上半段在球後、下半段在球前，這裡用單一細環簡化 */
+.cap-top {
+  position: absolute; left: -10%; right: -10%; top: 34%; height: 32%; border-radius: 50%;
+  border: 1.5px solid color-mix(in srgb, var(--c2) 70%, transparent);
+  transform: rotate(-18deg); transition: transform .35s ease, opacity .35s ease;
+  box-shadow: 0 0 6px color-mix(in srgb, var(--c1) 40%, transparent);
 }
-.cap-slot[data-st="opened"] .cap-ball { filter: saturate(.6) drop-shadow(0 4px 3px rgba(40, 20, 5, .4)); }
-.cap-slot[data-st="opened"] .cap-top { transform: translate(-3px, -4px) rotate(-22deg); }
-.cap-slot[data-st="opened"] .cap-ball::after { display: none; }
-/* 新封存：從球道左端一路滾到自己的格子 */
+.cap-st { position: absolute; right: -6px; top: -5px; font-style: normal; font-size: .7rem; line-height: 1; filter: drop-shadow(0 0 3px rgba(0, 0, 0, .8)); }
+/* 到期可開：變成發光的金色恆星，脈動 */
+.cap-slot[data-st="ready"] .cap-bot {
+  filter: none;
+  background: radial-gradient(circle at 50% 50%, #fff 0, #fff3c4 20%, #ffd666 55%, #e8a93c 100%);
+  box-shadow: 0 0 14px rgba(255, 214, 102, .9), 0 0 30px rgba(255, 214, 102, .4);
+  animation: cap-pulse 1.8s ease-in-out infinite;
+}
+.cap-slot[data-st="ready"] .cap-top { border-color: rgba(255, 224, 140, .85); }
+@keyframes cap-pulse {
+  0%, 100% { transform: scale(.92); box-shadow: 0 0 10px rgba(255, 214, 102, .7), 0 0 20px rgba(255, 214, 102, .25); }
+  50%      { transform: scale(1.06); box-shadow: 0 0 18px rgba(255, 214, 102, 1), 0 0 38px rgba(255, 214, 102, .5); }
+}
+/* 已開啟：球體只剩淡淡的空心，星環保留，像一顆釋放過內容的行星 */
+.cap-slot[data-st="opened"] .cap-bot { background: transparent; box-shadow: none; filter: none; border: 1.5px dashed color-mix(in srgb, var(--c2) 55%, transparent); }
+.cap-slot[data-st="opened"] .cap-top { opacity: .45; transform: rotate(-18deg) scale(1.05); }
+.cap-slot[data-st="opened"] .cap-lbl { opacity: .7; }
+/* 新封存：從星軌左端一路滑到自己的格子 */
 .cap-slot.rollin { animation: cap-slide 1s cubic-bezier(.2, .75, .3, 1) both; }
 .cap-slot.rollin .cap-ball { animation: cap-spin 1s cubic-bezier(.2, .75, .3, 1) both; }
 @keyframes cap-slide {
@@ -530,9 +549,9 @@ nav.tabbar::after {
   to   { transform: none; }
 }
 @keyframes cap-spin { from { transform: rotate(calc(var(--i) * -180deg - 180deg)); } to { transform: none; } }
-@media (max-width: 340px) { .cap-lane { --d: 34px; } .cap-lbl { font-size: .56rem; padding: 2px 3px; } }
+@media (max-width: 340px) { .cap-lane { --d: 32px; } .cap-lbl { font-size: .56rem; padding: 3px 4px; } }
 @media (prefers-reduced-motion: reduce) {
-  .cap-slot.rollin, .cap-slot.rollin .cap-ball, .cap-slot[data-st="ready"] .cap-ball { animation: none; }
+  .cap-slot.rollin, .cap-slot.rollin .cap-ball, .cap-slot[data-st="ready"] .cap-bot { animation: none; }
   .cap-top { transition: none; }
 }
 .cap-info-ico { font-size: 2.6rem; line-height: 1.1; }
