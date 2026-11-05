@@ -7,7 +7,12 @@
       "mcp__Claude_Code_Remote__update_trigger",
       "ScheduleWakeup",
       "CronCreate",
-      "PushNotification"
+      "PushNotification",
+      "mcp__claude-code-remote__send_later",
+      "mcp__claude-code-remote__create_trigger",
+      "mcp__claude-code-remote__fire_trigger",
+      "mcp__claude-code-remote__update_trigger",
+      "mcp__claude-code-remote__subscribe_pr_activity"
     ]
   }
 }
