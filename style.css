@@ -83,6 +83,69 @@
   --cal-newmoon: #6d8299; --cal-fullmoon: #b8912f;
 }
 
+/* 主題：星雲海潮 Cosmos（深色＝星雲、淺色＝藍天大海，跟著系統外觀切換；動態背景在 ambient.js） */
+:root[data-theme="cosmos"] {
+  color-scheme: dark;
+  --bg: #060914;
+  --surface: #0f1730;
+  --surface-2: #18233f;
+  --line: #26345a;
+  --ink: #eef3ff;
+  --ink-2: #aebbd6;
+  --ink-3: #8090ae;
+  --accent: #6cc8f2;
+  --accent-ink: #06101f;
+  --accent-deep: #2c63b0;
+  --accent-soft: #16294d;
+  --gold: #e5a065;
+  --chart-1: #4aa3f0;
+  --card-alpha: 78%;
+}
+@media (prefers-color-scheme: light) {
+  :root[data-theme="cosmos"] {
+    color-scheme: light;
+    --bg: #d6ebf8;
+    --surface: #ffffff;
+    --surface-2: #eaf4fb;
+    --line: #c3dbec;
+    --ink: #0f2638;
+    --ink-2: #3d5b72;
+    --ink-3: #66808f;
+    --accent: #1c6fb4;
+    --accent-ink: #ffffff;
+    --accent-deep: #0f4a80;
+    --accent-soft: #dcedf9;
+    --gold: #b0782a;
+    --chart-1: #2a78d6;
+    --card-alpha: 86%;
+    --cal-dream: #5d4fd6; --cal-diary: #2a78d6; --cal-cbt: #12897a;
+    --cal-newmoon: #6d8299; --cal-fullmoon: #b8912f;
+  }
+}
+/* 動態背景：固定在最底層；卡片改半透明、拿掉逐張 blur（背景每幀在動，逐張模糊很耗電） */
+.ambient-bg { position: fixed; inset: 0; width: 100%; height: 100%; z-index: -1; pointer-events: none; display: block; }
+.ambient-bg[hidden] { display: none; }
+:root[data-theme="cosmos"] body { background-image: none; }
+:root[data-theme="cosmos"] body::before { display: none; }
+:root[data-theme="cosmos"] .card {
+  background: color-mix(in srgb, var(--surface) var(--card-alpha), transparent);
+  backdrop-filter: none; -webkit-backdrop-filter: none;
+}
+:root[data-theme="cosmos"] header.app-header { border-bottom-color: color-mix(in srgb, var(--accent) 14%, transparent); }
+/* 沒有 WebGL 時的靜態版 */
+:root[data-theme="cosmos"].ambient-fallback body {
+  background-image:
+    radial-gradient(ellipse 60% 40% at 35% 40%, rgba(108,200,242,.35), transparent 70%),
+    radial-gradient(ellipse 50% 45% at 15% 65%, rgba(160,72,30,.35), transparent 70%),
+    radial-gradient(ellipse 80% 60% at 60% 50%, rgba(26,56,128,.45), transparent 75%);
+  background-attachment: fixed;
+}
+@media (prefers-color-scheme: light) {
+  :root[data-theme="cosmos"].ambient-fallback body {
+    background-image: linear-gradient(to bottom, #5a9fe0 0%, #cde7f7 62%, #8cc3e3 64%, #2f78ab 100%);
+  }
+}
+
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 html { font-size: 16px; }
 body {
