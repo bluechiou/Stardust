@@ -4,7 +4,7 @@
 
 /* 版本號：每次要讓使用者看到新東西時，這裡和 sw.js 的 CACHE 一起往上加。
    設定分頁會顯示這個號碼，回報問題時報這個數字最快能判斷對方在哪一版。 */
-const APP_VERSION = "2026.11.03";
+const APP_VERSION = "2026.11.20";
 
 /* ---------- 小工具 ---------- */
 const $ = (sel, el = document) => el.querySelector(sel);
@@ -1099,19 +1099,24 @@ async function renderPhoto(imgEl, photoId) {
   if (data) imgEl.src = data; else imgEl.remove();
 }
 
-/* ---------- 主題（星塵之夜＝預設；暮色微光／綻藍晨霧＝New Version ） ---------- */
+/* ---------- 主題（星塵之夜＝預設；暮色微光／綻藍晨霧＝New Version；星雲海潮＝動態背景，跟著系統深淺色） ---------- */
 const THEMES = {
   night: { name: "星塵之夜", dots: ["#0d0d14", "#8b7ff0", "#e8c874"], meta: "#0d0d14" },
   dusk: { name: "暮色微光", dots: ["#292643", "#e99e75", "#776483"], meta: "#1e1b36" },
   mist: { name: "綻藍晨霧", dots: ["#beceda", "#2b4c59", "#fcdcdc"], meta: "#eef3f7" },
+  cosmos: { name: "星雲海潮", dots: ["#0f1730", "#6cc8f2", "#e5a065"], meta: "#060914", metaLight: "#d6ebf8" },
 };
+const LIGHT_MQ = matchMedia("(prefers-color-scheme: light)");
 function applyTheme(key) {
   const t = THEMES[key] ? key : "night";
   if (t === "night") delete document.documentElement.dataset.theme;
   else document.documentElement.dataset.theme = t;
-  $('meta[name="theme-color"]')?.setAttribute("content", THEMES[t].meta);
+  const light = LIGHT_MQ.matches;
+  $('meta[name="theme-color"]')?.setAttribute("content", (light && THEMES[t].metaLight) || THEMES[t].meta);
+  window.StardustAmbient?.set(t === "cosmos" ? (light ? "ocean" : "nebula") : null);
   return t;
 }
+LIGHT_MQ.addEventListener?.("change", () => applyTheme(store.data.settings.theme || "night"));
 
 /* ---------- 魔法過場特效（純視覺；資料在動畫前就已寫入，點擊可跳過） ---------- */
 const REDUCED_MOTION = matchMedia("(prefers-reduced-motion: reduce)").matches;
