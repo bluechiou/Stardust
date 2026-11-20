@@ -17,3 +17,12 @@ Repo `CLAUDE.md` rules (brand tokens, timezone, privacy) override any of these s
 ## MCP: 21st (Magic)
 
 `.mcp.json` at repo root declares the 21st MCP server; the API key is read from env var `API_KEY_21ST` (never committed). Without the key the server simply fails to authenticate. Free key: https://21st.dev/mcp
+
+## Installed 2026-11-14 (Blue: hallmark, unslop)
+
+| Skill dir(s) / item | Upstream | Commit | License / note |
+|---|---|---|---|
+| hallmark | https://github.com/nutlope/hallmark (`skills/hallmark`, v2.0.0) | 04977e1 | MIT (`_licenses/hallmark.MIT`). Copied verbatim. skillspector `--no-llm`: 100/CRITICAL, read by hand = false positives (rule docs mentioning metadata endpoints, incomplete-analysis flags). The only outbound call is optional `scripts/imagegen.mjs` (Together AI, needs the user's own key). The edit-time lint hook (`scripts/install-hook.mjs`) is **not** installed: it would run on every edit. |
+| unslop | https://github.com/heydamir/unslop (`skills/unslop`) | 97daa3e | **CC BY 4.0** (`_licenses/unslop.CC-BY-4.0`): keep attribution to Damir Sokolovsky (@heydamir). Copied verbatim. skillspector `--no-llm`: 45/MEDIUM (unpinned `npx playwright` in `scripts/snapshot.mjs`, `scripts/story.mjs`; no declared tool scope). No other findings. |
+
+Repo `CLAUDE.md` rules (brand tokens, copy rules, privacy) override both skills.
